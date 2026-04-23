@@ -1704,13 +1704,14 @@ CDemuxStream* CDVDDemuxFFmpeg::AddStream(int streamIdx)
         if (fps > 24.5f && pStream->time_base.num && pStream->time_base.den &&
             pStream->codecpar->field_order != AV_FIELD_PROGRESSIVE && pStream->codecpar->field_order != AV_FIELD_UNKNOWN)
         {
-          if (static_cast<float>(pStream->time_base.den) / static_cast<float>(pStream->time_base.num) < 61.0f)
+          float tb_rate = static_cast<float>(pStream->time_base.den) / static_cast<float>(pStream->time_base.num);
+          if (tb_rate > 45.0f && tb_rate < 65.0f)
           {
+            // Only 45-65Hz looks like field rate (e.g. 1/50, 1/60)
             st->iFpsRate  = pStream->time_base.den;
             st->iFpsScale = pStream->time_base.num;
           }
-          else
-            st->iFpsRate  *= 2;
+          // Otherwise (time_base is not field rate): keep existing fps, no doubling
 
           st->bInterlaced = true;
         }
