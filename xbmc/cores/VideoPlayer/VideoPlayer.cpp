@@ -3984,15 +3984,24 @@ bool CVideoPlayer::OpenVideoStream(CDVDStreamInfo& hint, bool reset)
                                                    (double)DVD_TIME_BASE * hint.fpsscale /
                                                    (hint.fpsrate * (hint.interlaced ? 2 : 1)));
 
-      if (MathUtils::FloatEquals(25.0f, static_cast<float>(framerate), 0.01f))
+      if (hint.codec != AV_CODEC_ID_VC1)
       {
-        framerate = 50.0;
-        m_processInfo->SetVideoInterlaced(true);
+        if (MathUtils::FloatEquals(25.0f, static_cast<float>(framerate), 0.01f))
+        {
+          framerate = 50.0;
+          m_processInfo->SetVideoInterlaced(true);
+        }
+        if (MathUtils::FloatEquals(29.97f, static_cast<float>(framerate), 0.01f))
+        {
+          framerate = 60000.0 / 1001.0;
+          m_processInfo->SetVideoInterlaced(true);
+        }
       }
-      if (MathUtils::FloatEquals(29.97f, static_cast<float>(framerate), 0.01f))
+      else
       {
-        framerate = 60000.0 / 1001.0;
-        m_processInfo->SetVideoInterlaced(true);
+        // For VC-1 videos, use original framerate without doubling
+        framerate = static_cast<double>(hint.fpsrate) / hint.fpsscale;
+        m_processInfo->SetVideoInterlaced(hint.interlaced);
       }
       m_processInfo->SetVideoFps(static_cast<float>(framerate));
       m_renderManager.TriggerUpdateResolution(framerate, hint.width, hint.height, hint.stereo_mode);

@@ -786,11 +786,11 @@ void CDVDVideoCodecAmlogic::FrameRateTracking(uint8_t *pData, int iSize, double 
       {
         m_framerate = static_cast<float>(m_hints.fpsrate) / m_hints.fpsscale;
         if (m_hints.codecOptions & CODEC_UNKNOWN_I_P)
-          if (std::abs(m_framerate - 25.0) < 0.02 || std::abs(m_framerate - 29.97) < 0.02)
-          {
-            m_framerate += m_framerate;
-            m_hints.fpsrate += m_hints.fpsrate;
-          }
+        {
+          CLog::Log(LOGDEBUG, "CODEC_UNKNOWN_I_P detected but frame rate is known ({:.3f} fps)", m_framerate);
+          // Skip frame rate doubling - demuxer already provided correct fps
+          // This logic is for MPEG-2 transport streams, modern formats don't need it
+        }
         m_video_rate = (int)(0.5 + (96000.0 / m_framerate));
       }
       m_hints.width    = m_mpeg2_sequence->width;
