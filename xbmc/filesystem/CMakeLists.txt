@@ -49,6 +49,7 @@ set(SOURCES AddonsDirectory.cpp
             SpecialProtocolDirectory.cpp
             SpecialProtocolFile.cpp
             StackDirectory.cpp
+            StreamFastFile.cpp
             VideoDatabaseDirectory.cpp
             VideoDatabaseFile.cpp
             VirtualDirectory.cpp
@@ -113,6 +114,7 @@ set(HEADERS AddonsDirectory.h
             SpecialProtocolDirectory.h
             SpecialProtocolFile.h
             StackDirectory.h
+            StreamFastFile.h
             VideoDatabaseDirectory.h
             VideoDatabaseFile.h
             VirtualDirectory.h

@@ -61,7 +61,9 @@
 #endif
 #include "ImageFile.h"
 #include "ResourceFile.h"
+#include "StreamFastFile.h"
 #include "URL.h"
+#include "utils/URIUtils.h"
 #include "utils/log.h"
 #include "network/WakeOnAccess.h"
 #include "utils/StringUtils.h"
@@ -151,6 +153,15 @@ IFile* CFileFactory::CreateLoader(const CURL& url)
 #ifdef TARGET_WINDOWS_STORE
   else if (CWinLibraryFile::IsValid(url)) return new CWinLibraryFile();
 #endif
+
+  // StreamFastFile: optimized HTTP/WebDAV reader for ISO/IMG files
+  if ((url.IsProtocol("http") || url.IsProtocol("https") ||
+       url.IsProtocol("dav") || url.IsProtocol("davs")))
+  {
+    std::string ext = URIUtils::GetExtension(url);
+    if (ext == ".iso" || ext == ".IMG" || ext == ".img")
+      return new CStreamFastFile();
+  }
 
   if (url.IsProtocol("ftp")
   ||  url.IsProtocol("ftps")
