@@ -368,29 +368,65 @@ const std::vector<uint8_t> CHevcSei::RemoveHdr10PlusFromSeiNalu(const uint8_t* i
 
 const std::vector<uint8_t> CHevcSei::RemoveCuvaFromSeiNalu(const uint8_t* inData, const size_t inDataLen)
 {
+  if (!inData || inDataLen == 0)
+  {
+    CLog::LogF(LOGWARNING, "HevcSei: Invalid input data for CUVA removal");
+    return {};
+  }
+
+  std::vector<uint8_t> result;
   std::vector<uint8_t> buf;
   std::vector<CHevcSei> messages = CHevcSei::ParseSeiRbspUnclearedEmulation(inData, inDataLen, buf);
-
-  if (auto res = CHevcSei::FindCuvaSeiMessage(buf, messages))
+  
+  // 预分配空间，避免多次重新分配
+  result.reserve(std::max<size_t>(inDataLen, 256));
+  
+  size_t removedCount = 0;
+  
+  // 按原始顺序复制非CUVA SEI消息（原地过滤，保持HDR10+等其他SEI）
+  for (const CHevcSei& sei : messages)
   {
-    auto msg = *res;
-    if (messages.size() > 1)
+    if (!IsCuvaSeiMessage(buf, sei))
     {
-      buf.erase(std::next(buf.begin(), msg->m_msgOffset),
-                std::next(buf.begin(), msg->m_payloadOffset + msg->m_payloadSize));
-      HevcAddStartCodeEmulationPrevention3Byte(buf);
+      // 保留HDR10+、mastering display、content light level等SEI
+      result.insert(result.end(), 
+                   buf.begin() + sei.m_msgOffset, 
+                   buf.begin() + sei.m_payloadOffset + sei.m_payloadSize);
     }
     else
     {
-      buf.clear();
+      removedCount++;
+      CLog::Log(LOGDEBUG, "HevcSei: Removed CUVA SEI #%zu (preserving HDR10+/other SEI)", removedCount);
     }
   }
-  else
+  
+  if (removedCount == 0)
   {
-    buf.clear();
+    CLog::Log(LOGDEBUG, "HevcSei: No CUVA SEI found, returning empty buffer");
+    return {}; // 表示无CUVA需要移除
   }
+  
+  CLog::Log(LOGDEBUG, "HevcSei: Removed %zu CUVA SEI messages, %zu bytes result", removedCount, result.size());
+  
+  // 添加emulation prevention和rbsp_trailing_bits
+  HevcAddStartCodeEmulationPrevention3Byte(result);
+  
+  return result;
+}
 
-  return buf;
+bool CHevcSei::IsCuvaSeiMessage(const std::vector<uint8_t>& buf, const CHevcSei& sei)
+{
+  if (sei.m_payloadType == 4 && sei.m_payloadSize >= 7)  // ITU-T T35
+  {
+    CBitstreamReader br(buf.data() + sei.m_payloadOffset, sei.m_payloadSize);
+    auto country = br.ReadBits(8);
+    auto provider = br.ReadBits(16);
+    if (country == 0x26 && provider == 0x0004)  // 严格的CUVA标识
+    {
+      return true;
+    }
+  }
+  return false;
 }
 
 std::optional<const CHevcSei*> CHevcSei::FindCuvaSeiMessage(

@@ -117,6 +117,7 @@ public:
       std::vector<uint8_t>& buf, const std::vector<CHevcSei>& messages);
   static bool IsCuvaHdrVivid(const std::vector<CHevcSei>& messages,
                              std::vector<uint8_t>& buf);
+  static bool IsCuvaSeiMessage(const std::vector<uint8_t>& buf, const CHevcSei& sei);
 
 private:
   // Parses single SEI message from the reader and pushes it to the list

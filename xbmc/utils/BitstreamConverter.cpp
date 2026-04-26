@@ -1237,6 +1237,89 @@ void CBitstreamConverter::ProcessSeiPrefix(uint8_t *buf, int32_t nal_size, uint8
   if (copy) BitstreamAllocAndCopy(poutbuf, poutbuf_size, nullptr, 0, buf, nal_size, HEVC_NAL_SEI_PREFIX);
 }
 
+void CBitstreamConverter::ProcessSeiSuffixWrap(uint8_t* buf, int32_t nal_size, uint8_t** poutbuf, 
+                                               uint32_t& poutbuf_size, Hdr10PlusMetadata& hdr10plus_meta, 
+                                               bool& convert_hdr10plus_meta)
+{
+  int temp_size = poutbuf_size;
+  ProcessSeiSuffix(buf, nal_size, poutbuf, &temp_size, hdr10plus_meta, convert_hdr10plus_meta);
+  poutbuf_size = temp_size;
+}
+
+void CBitstreamConverter::ProcessSeiSuffix(uint8_t* buf, int32_t nal_size, uint8_t** poutbuf, 
+                                           int* poutbuf_size, Hdr10PlusMetadata& hdr10plus_meta, 
+                                           bool& convert_hdr10plus_meta)
+{
+  // SEI_SUFFIX处理逻辑与SEI_PREFIX相同，确保CUVA被正确移除
+  std::vector<uint8_t> clearBuf;
+  std::vector<CHevcSei> messages = CHevcSei::ParseSeiRbspUnclearedEmulation(buf, nal_size, clearBuf);
+  
+  bool isCuva = CHevcSei::IsCuvaHdrVivid(messages, clearBuf);
+  bool copy = true;
+  
+  // 获取初始HDR类型
+  bool isDual = (m_initial_hdrType == StreamHdrType::HDR_TYPE_DOLBYVISION);
+  bool sinkSupportCuva = aml_display_support_cuva();
+  
+  // 检测CUVA并决定是否需要移除
+  bool removeCuva = false;
+  if (isCuva) {
+    if (isDual) {
+      removeCuva = !m_cuva_priority;  // 混合流：根据优先级决定
+    } else {
+      removeCuva = !sinkSupportCuva;  // 纯CUVA：根据显示支持决定
+    }
+  }
+  
+  if (isCuva && removeCuva) {
+    if (isDual && !m_cuva_priority) {
+      // DV优先级：从SEI_SUFFIX中移除CUVA
+      CLog::Log(LOGDEBUG, "BitstreamConverter: Removing CUVA HDR VIVID SEI from SEI_SUFFIX (DV priority)");
+      auto nalu = CHevcSei::RemoveCuvaFromSeiNalu(buf, nal_size);
+      if (!nalu.empty())
+      {
+        CLog::Log(LOGDEBUG, "BitstreamConverter: Successfully removed CUVA HDR VIVID SEI from SEI_SUFFIX");
+        BitstreamAllocAndCopy(poutbuf, poutbuf_size, nullptr, 0, nalu.data(), nalu.size(), HEVC_NAL_SEI_SUFFIX);
+        nalu.clear();
+        copy = false;
+      }
+    }
+  }
+  
+  // 处理HDR10+元数据（保持与SEI_PREFIX相同逻辑）
+  if (auto res = CHevcSei::ExtractMasteringDisplayColourVolume(messages, clearBuf)) {
+    ApplyMasteringDisplayColourVolume(res.value(), removeCuva);
+  }
+  
+  if (auto res = CHevcSei::ExtractContentLightLevel(messages, clearBuf)) {
+    ApplyContentLightLevel(res.value(), removeCuva);
+  }
+  
+  // 更新静态元数据
+  bool updateMetadata = false;
+  if (removeCuva) {
+    UpdateHdrStaticMetadata();
+    aml_dv_send_hdr10_data();
+  }
+  
+  // 处理HDR10+
+  if (auto res = CHevcSei::ExtractHdr10Plus(messages, clearBuf)) {
+    bool isDualForPlus = (m_initial_hdrType == StreamHdrType::HDR_TYPE_DOLBYVISION);
+    bool considerAsHdr10Plus = (!isDualForPlus || m_dual_priority_Hdr10Plus || m_prefer_Hdr10Plus_conversion);
+    
+    bool convert = (considerAsHdr10Plus && m_convert_Hdr10Plus && !m_dual_priority_Hdr10Plus);
+    if (convert || m_removeHdr10Plus) {
+      auto nalu = CHevcSei::RemoveHdr10PlusFromSeiNalu(buf, nal_size);
+      if (!nalu.empty()) {
+        BitstreamAllocAndCopy(poutbuf, poutbuf_size, nullptr, 0, nalu.data(), nalu.size(), HEVC_NAL_SEI_SUFFIX);
+        copy = false;
+      }
+    }
+  }
+  
+  if (copy) BitstreamAllocAndCopy(poutbuf, poutbuf_size, nullptr, 0, buf, nal_size, HEVC_NAL_SEI_SUFFIX);
+}
+
 bool CBitstreamConverter::BitstreamConvert(uint8_t* pData, int iSize, uint8_t **poutbuf, int *poutbuf_size, double pts)
 {
   // based on h264_mp4toannexb_bsf.c (ffmpeg)
@@ -1329,6 +1412,14 @@ bool CBitstreamConverter::BitstreamConvert(uint8_t* pData, int iSize, uint8_t **
 
         case HEVC_NAL_SEI_PREFIX:
           ProcessSeiPrefix(buf, nal_size, poutbuf, poutbuf_size, hdr10plus_meta, convert_hdr10plus_meta);
+          break;
+
+        case HEVC_NAL_SEI_SUFFIX:  // 处理SEI_SUFFIX NALU
+          if (m_convert_dovi == DOVIMode::MODE_DT_DL) {
+            ProcessSeiSuffixWrap(buf, nal_size, poutbuf, poutbuf_size, hdr10plus_meta, convert_hdr10plus_meta);
+          } else {
+            ProcessSeiSuffix(buf, nal_size, poutbuf, poutbuf_size, hdr10plus_meta, convert_hdr10plus_meta);
+          }
           break;
 
         case HEVC_NAL_UNSPEC62: // DoVi RPU
