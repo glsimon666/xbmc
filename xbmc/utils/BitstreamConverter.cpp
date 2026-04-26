@@ -1152,7 +1152,7 @@ void CBitstreamConverter::ProcessSeiPrefix(uint8_t *buf, int32_t nal_size, uint8
         // DV module SDR transition, unimplemented cuva_hdr_alg, etc.).
         bool sinkSupportCuva = aml_display_support_cuva();
         CLog::Log(LOGDEBUG, "BitstreamConverter: Sink CUVA support: {:d}", (int)sinkSupportCuva);
-        removeCuva = !sinkSupportCuva;
+        bool removeCuva = !sinkSupportCuva;
       }
 
       if (m_first_frame) {
@@ -1296,7 +1296,6 @@ void CBitstreamConverter::ProcessSeiSuffix(uint8_t* buf, int32_t nal_size, uint8
   }
   
   // 更新静态元数据
-  bool updateMetadata = false;
   if (removeCuva) {
     UpdateHdrStaticMetadata();
     aml_dv_send_hdr10_data();
@@ -1415,11 +1414,7 @@ bool CBitstreamConverter::BitstreamConvert(uint8_t* pData, int iSize, uint8_t **
           break;
 
         case HEVC_NAL_SEI_SUFFIX:  // 处理SEI_SUFFIX NALU
-          if (m_convert_dovi == DOVIMode::MODE_DT_DL) {
-            ProcessSeiSuffixWrap(buf, nal_size, poutbuf, poutbuf_size, hdr10plus_meta, convert_hdr10plus_meta);
-          } else {
-            ProcessSeiSuffix(buf, nal_size, poutbuf, poutbuf_size, hdr10plus_meta, convert_hdr10plus_meta);
-          }
+          ProcessSeiSuffix(buf, nal_size, poutbuf, poutbuf_size, hdr10plus_meta, convert_hdr10plus_meta);
           break;
 
         case HEVC_NAL_UNSPEC62: // DoVi RPU
