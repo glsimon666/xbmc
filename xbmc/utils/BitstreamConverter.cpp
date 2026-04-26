@@ -7,6 +7,9 @@
  */
 
 #include "utils/log.h"
+#include "ServiceBroker.h"
+#include "settings/Settings.h"
+#include "settings/SettingsComponent.h"
 
 #include <assert.h>
 
@@ -21,6 +24,7 @@
 #include "HDR10PlusConvert.h"
 
 #include "utils/StringUtils.h"
+#include "utils/AMLUtils.h"
 #include "cores/VideoPlayer/Process/ProcessInfo.h"
 #include "cores/VideoPlayer/DVDStreamInfo.h"
 
@@ -364,10 +368,19 @@ CBitstreamConverter::CBitstreamConverter(CDVDStreamInfo& hints)
   m_dual_priority_Hdr10Plus = false;
   m_removeDovi = false;
   m_removeHdr10Plus = false;
+  m_cuva_priority = false;
   m_combine = false;
   m_first_frame = true;
   m_hdrStaticMetadataInfo = {};
   m_dataCacheCore.SetVideoSourceHdrType(m_hints.hdrType);
+  
+  // Get CUVA priority from settings
+  auto settings = CServiceBroker::GetSettingsComponent()->GetSettings();
+  if (settings)
+  {
+    int cuvaPriority = settings->GetInt(CSettings::SETTING_COREELEC_AMLOGIC_DV_CUVA_PRIORITY);
+    m_cuva_priority = (cuvaPriority == 1);
+  }
 }
 
 CBitstreamConverter::~CBitstreamConverter()
@@ -1119,39 +1132,97 @@ void CBitstreamConverter::ProcessSeiPrefix(uint8_t *buf, int32_t nal_size, uint8
     aml_dv_send_hdr10_data();
   } 
 
+  // Check for CUVA HDR VIVID
+  {
+    bool isCuva = CHevcSei::IsCuvaHdrVivid(messages, clearBuf);
+    CLog::Log(LOGDEBUG, "BitstreamConverter: CUVA HDR VIVID detected: {:d}", (int)isCuva);
+    if (isCuva) {
+      bool isDual = (m_initial_hdrType == StreamHdrType::HDR_TYPE_DOLBYVISION);
+      CLog::Log(LOGDEBUG, "BitstreamConverter: CUVA isDual: {:d}, m_initial_hdrType: {:d}", (int)isDual, (int)m_initial_hdrType);
+
+      bool removeCuva;
+      if (isDual) {
+        // Dual CUVA+DV content: keep existing priority-based behavior
+        removeCuva = !m_cuva_priority;
+      } else {
+        // Pure CUVA content: only remove SEI if the display does not support HDR VIVID.
+        // When the sink supports CUVA, let the kernel handle it natively (bypass mode).
+        // When the sink does not support CUVA, downgrade to HDR10 by removing CUVA SEI
+        // to avoid kernel-level CUVA processing conflicts (VPP_MATRIX_BT2020YUV_BT2020RGB_CUVA,
+        // DV module SDR transition, unimplemented cuva_hdr_alg, etc.).
+        bool sinkSupportCuva = aml_display_support_cuva();
+        CLog::Log(LOGDEBUG, "BitstreamConverter: Sink CUVA support: {:d}", (int)sinkSupportCuva);
+        removeCuva = !sinkSupportCuva;
+      }
+
+      if (m_first_frame) {
+        if (removeCuva && isDual) {
+          // For dual stream, keep HDR type as CUVA but use HDR10 for internal processing
+          m_hints.hdrType = StreamHdrType::HDR_TYPE_CUVA;
+          CLog::Log(LOGDEBUG, "BitstreamConverter: CUVA in dual stream, removing HDR VIVID SEI");
+          m_dataCacheCore.SetVideoHdrType(StreamHdrType::HDR_TYPE_CUVA); // Always show HDR VIVID in UI
+          m_dataCacheCore.SetVideoSourceHdrType(StreamHdrType::HDR_TYPE_HDR10); // Use HDR10 for internal processing
+          m_dataCacheCore.SetVideoSourceAdditionalHdrType(StreamHdrType::HDR_TYPE_DOLBYVISION);
+        } else {
+          m_hints.hdrType = StreamHdrType::HDR_TYPE_CUVA;
+          CLog::Log(LOGDEBUG, "BitstreamConverter: Set hdrType to CUVA");
+          m_dataCacheCore.SetVideoHdrType(StreamHdrType::HDR_TYPE_CUVA);
+          m_dataCacheCore.SetVideoSourceHdrType(StreamHdrType::HDR_TYPE_CUVA);
+          if (isDual) m_dataCacheCore.SetVideoSourceAdditionalHdrType(StreamHdrType::HDR_TYPE_DOLBYVISION);
+        }
+      }
+
+      if (removeCuva && isDual) {
+        // Only handle dual stream (DV + HDR VIVID), remove HDR VIVID SEI
+        CLog::Log(LOGDEBUG, "BitstreamConverter: Removing CUVA HDR VIVID SEI from dual stream");
+        auto nalu = CHevcSei::RemoveCuvaFromSeiNalu(buf, nal_size);
+        if (!nalu.empty())
+        {
+          CLog::Log(LOGDEBUG, "BitstreamConverter: Successfully removed CUVA HDR VIVID SEI");
+          BitstreamAllocAndCopy(poutbuf, poutbuf_size, nullptr, 0, nalu.data(), nalu.size(), HEVC_NAL_SEI_PREFIX);
+          nalu.clear();
+          copy = false;
+        }
+      }
+    }
+  }
+  
   if (auto res = CHevcSei::ExtractHdr10Plus(messages, clearBuf)) {
 
     aml_kodi_set_cd_cs(2);
 
     bool isDual = (m_initial_hdrType == StreamHdrType::HDR_TYPE_DOLBYVISION); // Original is DV and now also found HDR10+ so is dual.
     bool considerAsHdr10Plus = (!isDual || m_dual_priority_Hdr10Plus || m_prefer_Hdr10Plus_conversion);
-
-    if (m_first_frame) {
-      if (considerAsHdr10Plus) {
-        m_hints.hdrType = StreamHdrType::HDR_TYPE_HDR10PLUS;
-        m_dataCacheCore.SetVideoSourceHdrType(StreamHdrType::HDR_TYPE_HDR10PLUS);
-        if (isDual) m_dataCacheCore.SetVideoSourceAdditionalHdrType(StreamHdrType::HDR_TYPE_DOLBYVISION);
-      } else {
-        if (isDual) m_dataCacheCore.SetVideoSourceAdditionalHdrType(StreamHdrType::HDR_TYPE_HDR10PLUS);
+    
+    // Don't override CUVA if it was already set
+    if (m_hints.hdrType != StreamHdrType::HDR_TYPE_CUVA) {
+      if (m_first_frame) {
+        if (considerAsHdr10Plus) {
+          m_hints.hdrType = StreamHdrType::HDR_TYPE_HDR10PLUS;
+          m_dataCacheCore.SetVideoSourceHdrType(StreamHdrType::HDR_TYPE_HDR10PLUS);
+          if (isDual) m_dataCacheCore.SetVideoSourceAdditionalHdrType(StreamHdrType::HDR_TYPE_DOLBYVISION);
+        } else {
+          if (isDual) m_dataCacheCore.SetVideoSourceAdditionalHdrType(StreamHdrType::HDR_TYPE_HDR10PLUS);
+        }
       }
-    }
 
-    bool convert = (considerAsHdr10Plus && m_convert_Hdr10Plus && !m_dual_priority_Hdr10Plus);
+      bool convert = (considerAsHdr10Plus && m_convert_Hdr10Plus && !m_dual_priority_Hdr10Plus);
 
-    if (convert) {
-      meta = res.value();
-      convert_hdr10plus_meta = true;
-    }
-
-    if (convert || m_removeHdr10Plus) {
-      // Remove and carry forward remaining sei in nalu.
-      auto nalu = CHevcSei::RemoveHdr10PlusFromSeiNalu(buf, nal_size);
-      if (!nalu.empty())
-      {
-        BitstreamAllocAndCopy(poutbuf, poutbuf_size, nullptr, 0, nalu.data(), nalu.size(), HEVC_NAL_SEI_PREFIX);
-        nalu.clear();
+      if (convert) {
+        meta = res.value();
+        convert_hdr10plus_meta = true;
       }
-      copy = false;
+
+      if (convert || m_removeHdr10Plus) {
+        // Remove and carry forward remaining sei in nalu.
+        auto nalu = CHevcSei::RemoveHdr10PlusFromSeiNalu(buf, nal_size);
+        if (!nalu.empty())
+        {
+          BitstreamAllocAndCopy(poutbuf, poutbuf_size, nullptr, 0, nalu.data(), nalu.size(), HEVC_NAL_SEI_PREFIX);
+          nalu.clear();
+        }
+        copy = false;
+      }
     }
   }
 

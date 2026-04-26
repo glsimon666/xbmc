@@ -231,6 +231,7 @@ protected:
   bool m_prefer_Hdr10Plus_conversion;
   bool m_dual_priority_Hdr10Plus;
   enum PeakBrightnessSource m_convert_Hdr10Plus_peak_brightness_source;
+  bool m_cuva_priority;
   bool m_first_frame;
   HDRStaticMetadataInfo m_hdrStaticMetadataInfo;
 

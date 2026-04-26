@@ -48,6 +48,8 @@
 #include <amcodec/codec.h>
 
 static bool vs10_conversion = false;
+
+// Forward declarations
 static bool vs10_conversion_reset_hdr10 = true;
 bool aml_linux_force_422 = false;
 bool aml_linux_osd_sdr8 = true;
@@ -179,7 +181,7 @@ void aml_dv_set_vs10_mode(unsigned int mode, StreamHdrType hdrType)
 
   CSysfsPath dolby_vision_mode{"/sys/module/amdolby_vision/parameters/dolby_vision_mode"};
   unsigned int existing_mode = dolby_vision_mode.Get<unsigned int>().value();
-  if ((existing_mode != mode) && (mode == DOLBY_VISION_OUTPUT_MODE_BYPASS) && (hdrType == StreamHdrType::HDR_TYPE_HDR10))
+  if ((existing_mode != mode) && (mode == DOLBY_VISION_OUTPUT_MODE_BYPASS) && (hdrType == StreamHdrType::HDR_TYPE_HDR10 || hdrType == StreamHdrType::HDR_TYPE_CUVA))
     vs10_conversion_reset_hdr10 = true;
   else
     vs10_conversion_reset_hdr10 = false;
@@ -219,7 +221,7 @@ void aml_dv_set_vs10_mode(unsigned int mode, StreamHdrType hdrType)
       vs10_conversion = true;
 
     if ((existing_mode != DOLBY_VISION_OUTPUT_MODE_HDR10) &&
-        (mode == DOLBY_VISION_OUTPUT_MODE_SDR10) && (hdrType == StreamHdrType::HDR_TYPE_HDR10))
+        (mode == DOLBY_VISION_OUTPUT_MODE_SDR10) && (hdrType == StreamHdrType::HDR_TYPE_HDR10 || hdrType == StreamHdrType::HDR_TYPE_CUVA))
       aml_dv_on(DOLBY_VISION_OUTPUT_MODE_HDR10);
 
     aml_dv_on(mode);
@@ -282,12 +284,14 @@ static unsigned int aml_vs10_by_hdrtype(StreamHdrType hdrType, unsigned int bitD
     case StreamHdrType::HDR_TYPE_HDR10:
       vs10_mode = aml_vs10_by_setting(CSettings::SETTING_COREELEC_AMLOGIC_DV_VS10_HDR10);
       break;
+
     case StreamHdrType::HDR_TYPE_HDR10PLUS:
       vs10_mode = aml_vs10_by_setting(CSettings::SETTING_COREELEC_AMLOGIC_DV_VS10_HDR10PLUS);
       break;
     case StreamHdrType::HDR_TYPE_HLG:
       vs10_mode = aml_vs10_by_setting(CSettings::SETTING_COREELEC_AMLOGIC_DV_VS10_HDRHLG);
       break;
+
     case StreamHdrType::HDR_TYPE_DOLBYVISION:
       vs10_mode = aml_vs10_by_setting(CSettings::SETTING_COREELEC_AMLOGIC_DV_VS10_DV);
       break;
@@ -314,6 +318,7 @@ static unsigned int aml_vs10_by_hdrtype(StreamHdrType hdrType, unsigned int bitD
   else
     vs10_conversion = false;
 
+  CLog::Log(LOGDEBUG, "AMLUtils: aml_vs10_by_hdrtype: hdrType={:d}, bitDepth={:d}, vs10_mode={:d}, vs10_conversion={:d}", (int)hdrType, (int)bitDepth, (int)vs10_mode, (int)vs10_conversion);
   return vs10_mode;
 }
 
@@ -371,6 +376,18 @@ bool aml_display_support_hdr_hlg()
   {
     std::string valstr = hdr_cap.Get<std::string>().value();
     support = (valstr.find("Hybrid Log-Gamma: 1") != std::string::npos);
+  }
+  return support;
+}
+
+bool aml_display_support_cuva()
+{
+  bool support = false;
+  CSysfsPath hdr_cap{"/sys/class/amhdmitx/amhdmitx0/hdr_cap"};
+  if (hdr_cap.Exists())
+  {
+    std::string valstr = hdr_cap.Get<std::string>().value();
+    support = (valstr.find("CUVA supported: 1") != std::string::npos);
   }
   return support;
 }
@@ -892,6 +909,11 @@ void aml_dv_open(StreamHdrType hdrType, unsigned int bitDepth)
     else if (aml_is_dv_enable()) // DV BYPASS, and it is on - then switch it off.
       aml_dv_off();
 
+    // Set CUVA priority based on user setting and current HDR type
+    int cuvaPriority = settings()->GetInt(CSettings::SETTING_COREELEC_AMLOGIC_DV_CUVA_PRIORITY);
+    aml_set_cuva_priority(cuvaPriority);
+    CLog::Log(LOGINFO, "AMLUtils::{} - Set CUVA priority to {} for HDR type {}", __FUNCTION__, cuvaPriority, CStreamDetails::HdrTypeToString(hdrType));
+
     bool content_is_dv(hdrType == StreamHdrType::HDR_TYPE_DOLBYVISION);
     CLog::Log(LOGDEBUG, "AMLUtils::{} - DV is [{}], requested with vs10 mode: [{}], set for: [{}]",  __FUNCTION__, aml_is_dv_enable(), aml_dv_output_mode_to_string(vs10_mode), content_is_dv ? "content" : "mapping");
   }
@@ -901,6 +923,10 @@ void aml_dv_close()
 {
   if (aml_is_dv_enable() && (aml_dv_mode() == DV_MODE_ON_DEMAND)) aml_dv_off();
   aml_dv_start(); // If DV Mode ON in Kodi Menu.
+  
+  // Reset CUVA priority to default
+  aml_set_cuva_priority(0);
+  CLog::Log(LOGINFO, "AMLUtils::{} - Reset CUVA priority to default (0)", __FUNCTION__);
 }
 
 void aml_dv_set_osd_max(int max)
@@ -987,7 +1013,8 @@ void aml_hevc_nal_skip_policy(const int value)
 void aml_set_osd_pq_bypass(StreamHdrType hdrType)
 {
   const bool enable = ((hdrType == StreamHdrType::HDR_TYPE_HDR10) ||
-                       (hdrType == StreamHdrType::HDR_TYPE_HDR10PLUS));
+                       (hdrType == StreamHdrType::HDR_TYPE_HDR10PLUS) ||
+                       (hdrType == StreamHdrType::HDR_TYPE_CUVA));
 
   CSysfsPath("/sys/module/am_vecm/parameters/osd_pq_bypass", enable);
   logM(LOGDEBUG, "AMLUtils", "am_vecm osd_pq_bypass [{}]", enable ? "enabled" : "disabled");
@@ -1864,6 +1891,20 @@ void aml_kodi_reset_cd_cs()
   {
     aml_dv_on(DOLBY_VISION_OUTPUT_MODE_IPT);
     vs10_conversion_reset_hdr10 = false;
+  }
+}
+
+void aml_set_cuva_priority(int priority)
+{
+  CSysfsPath cuva_priority{"/sys/class/amdolby_vision/cuva_priority"};
+  if (cuva_priority.Exists())
+  {
+    cuva_priority.Set(priority);
+    CLog::Log(LOGDEBUG, "AMLUtils::aml_set_cuva_priority - Set CUVA priority to {:d}", priority);
+  }
+  else
+  {
+    CLog::Log(LOGDEBUG, "AMLUtils::aml_set_cuva_priority - Sysfs path does not exist: %s", "/sys/class/amdolby_vision/cuva_priority");
   }
 }
 

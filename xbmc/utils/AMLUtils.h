@@ -93,6 +93,7 @@ enum DV_COLORIMETRY : int
 int  aml_get_cpufamily_id();
 bool aml_display_support_hdr_pq();
 bool aml_display_support_hdr_hlg();
+bool aml_display_support_cuva();
 bool aml_display_support_dv();
 bool aml_display_support_dv_ll();
 bool aml_display_support_dv_std();
@@ -166,6 +167,8 @@ void aml_reset_audio_from_play_from_resume();
 void aml_reset_from_subtitle_change();
 
 void aml_kodi_reset_cd_cs();
+
+void aml_set_cuva_priority(int mode);
 
 void aml_get_dv_cap();
 struct xbmc_dv_cap

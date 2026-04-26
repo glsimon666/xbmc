@@ -9,6 +9,98 @@
 #include "HevcSei.h"
 #include "HDR10Plus.h"
 
+#include "utils/log.h"
+
+void CBitstreamWriter::WriteBits(uint32_t value, int numBits)
+{
+  while (numBits > 0)
+  {
+    int bitPos = m_posBits % 8;
+    int bitsToWrite = std::min(8 - bitPos, numBits);
+    uint8_t mask = (1 << bitsToWrite) - 1;
+    uint8_t byteValue = (value & mask) << (8 - bitPos - bitsToWrite);
+
+    if (bitPos == 0)
+    {
+      m_buffer.push_back(byteValue);
+    }
+    else
+    {
+      m_buffer.back() |= byteValue;
+    }
+
+    value >>= bitsToWrite;
+    m_posBits += bitsToWrite;
+    numBits -= bitsToWrite;
+  }
+}
+
+void CBitstreamWriter::WriteByte(uint8_t byte)
+{
+  ByteAlign();
+  m_buffer.push_back(byte);
+  m_posBits += 8;
+}
+
+void CBitstreamWriter::ByteAlign()
+{
+  if (m_posBits % 8 != 0)
+  {
+    m_buffer.push_back(0);
+    m_posBits = (m_posBits / 8 + 1) * 8;
+  }
+}
+
+std::vector<uint8_t> CBitstreamWriter::GetData() const
+{
+  return m_buffer;
+}
+
+std::vector<uint8_t> BuildMasteringDisplaySei(const MasteringDisplayColourVolume& mdcv)
+{
+  CBitstreamWriter w;
+  for (int i = 0; i < 3; i++) {
+    w.WriteBits(mdcv.displayPrimaries[i].x, 16);
+    w.WriteBits(mdcv.displayPrimaries[i].y, 16);
+  }
+  w.WriteBits(mdcv.whitePoint.x, 16);
+  w.WriteBits(mdcv.whitePoint.y, 16);
+  w.WriteBits(mdcv.maxLuminance, 32);
+  w.WriteBits(mdcv.minLuminance, 32);
+  w.ByteAlign(); // Ensure byte alignment for SEI payload
+  return w.GetData();
+}
+
+std::vector<uint8_t> BuildContentLightLevelSei(const ContentLightLevel& cll)
+{
+  CBitstreamWriter w;
+  w.ByteAlign(); // Ensure byte alignment before writing
+  w.WriteBits(cll.maxContentLightLevel, 16);
+  w.WriteBits(cll.maxFrameAverageLightLevel, 16);
+  return w.GetData();
+}
+
+MasteringDisplayColourVolume GetDefaultMasteringDisplay()
+{
+  // Default P3-D65 mastering display
+  MasteringDisplayColourVolume mdcv;
+  mdcv.displayPrimaries[0] = { 13250, 34500 }; // R
+  mdcv.displayPrimaries[1] = { 7500, 30000 };  // G
+  mdcv.displayPrimaries[2] = { 3000, 15000 };  // B
+  mdcv.whitePoint = { 15635, 16450 };          // D65
+  mdcv.maxLuminance = 1000000;                 // 1000 nits
+  mdcv.minLuminance = 1;                       // 0.001 nits
+  return mdcv;
+}
+
+ContentLightLevel GetDefaultContentLightLevel()
+{
+  ContentLightLevel cll;
+  cll.maxContentLightLevel = 1000;            // 1000 nits MaxCLL (reasonable default)
+  cll.maxFrameAverageLightLevel = 200;        // 200 nits MaxFALL (reasonable default)
+  return cll;
+}
+
 void HevcAddStartCodeEmulationPrevention3Byte(std::vector<uint8_t>& buf)
 {
   size_t i = 0;
@@ -272,4 +364,183 @@ const std::vector<uint8_t> CHevcSei::RemoveHdr10PlusFromSeiNalu(const uint8_t* i
   }
 
   return buf;
+}
+
+const std::vector<uint8_t> CHevcSei::RemoveCuvaFromSeiNalu(const uint8_t* inData, const size_t inDataLen)
+{
+  std::vector<uint8_t> buf;
+  std::vector<CHevcSei> messages = CHevcSei::ParseSeiRbspUnclearedEmulation(inData, inDataLen, buf);
+
+  if (auto res = CHevcSei::FindCuvaSeiMessage(buf, messages))
+  {
+    auto msg = *res;
+    if (messages.size() > 1)
+    {
+      buf.erase(std::next(buf.begin(), msg->m_msgOffset),
+                std::next(buf.begin(), msg->m_payloadOffset + msg->m_payloadSize));
+      HevcAddStartCodeEmulationPrevention3Byte(buf);
+    }
+    else
+    {
+      buf.clear();
+    }
+  }
+  else
+  {
+    buf.clear();
+  }
+
+  return buf;
+}
+
+std::optional<const CHevcSei*> CHevcSei::FindCuvaSeiMessage(
+    std::vector<uint8_t>& buf, const std::vector<CHevcSei>& messages)
+{
+  for (const CHevcSei& sei : messages)
+  {
+    // User Data Registered ITU-T T.35
+    if (sei.m_payloadType == 4 && sei.m_payloadSize >= 7)
+    {
+      CBitstreamReader br(buf.data() + sei.m_payloadOffset, sei.m_payloadSize);
+      const auto itu_t_t35_country_code = br.ReadBits(8);
+      const auto itu_t_t35_terminal_provider_code = br.ReadBits(16);
+      const auto itu_t_t35_terminal_provider_oriented_code = br.ReadBits(16);
+
+      // China, HDR VIVID
+      if (itu_t_t35_country_code == 0x26 && itu_t_t35_terminal_provider_code == 0x0004)
+      {
+        return &sei;
+      }
+    }
+  }
+
+  return {};
+}
+
+bool CHevcSei::IsCuvaHdrVivid(const std::vector<CHevcSei>& messages,
+                             std::vector<uint8_t>& buf)
+{
+  return FindCuvaSeiMessage(buf, messages).has_value();
+}
+
+const std::vector<uint8_t> CHevcSei::ConvertCuvaToHdr10(
+    const uint8_t* inData, const size_t inDataLen)
+{
+  if (!inData || inDataLen == 0)
+  {
+    CLog::LogF(LOGWARNING, "HevcSei: Invalid input data for CUVA to HDR10 conversion");
+    return {};
+  }
+
+  std::vector<uint8_t> buf;
+  std::vector<CHevcSei> messages = CHevcSei::ParseSeiRbspUnclearedEmulation(inData, inDataLen, buf);
+
+  // Get default HDR10 metadata
+  MasteringDisplayColourVolume mdcv = GetDefaultMasteringDisplay();
+  ContentLightLevel cll = GetDefaultContentLightLevel();
+
+  // Check if there's existing mastering display and content light level information
+  if (auto md = CHevcSei::ExtractMasteringDisplayColourVolume(messages, buf))
+  {
+    mdcv = md.value();
+  }
+  if (auto cl = CHevcSei::ExtractContentLightLevel(messages, buf))
+  {
+    cll = cl.value();
+  }
+
+  // Build HDR10 SEI messages
+  std::vector<uint8_t> masteringSei = BuildMasteringDisplaySei(mdcv);
+  std::vector<uint8_t> contentLightSei = BuildContentLightLevelSei(cll);
+
+  CLog::LogF(LOGDEBUG, "HevcSei: Converting CUVA HDR VIVID to HDR10 metadata");
+
+  // Process SEI payload: remove CUVA SEI and add HDR10 SEI
+  std::vector<uint8_t> newRbsp;
+  newRbsp.reserve(buf.size() + masteringSei.size() + contentLightSei.size() + 100);
+
+  for (const CHevcSei& sei : messages)
+  {
+    // Check if this is a CUVA HDR VIVID SEI message
+    bool isCuva = false;
+    if (sei.m_payloadType == 4 && sei.m_payloadSize >= 7)
+    {
+      CBitstreamReader br(buf.data() + sei.m_msgOffset + (sei.m_payloadOffset - sei.m_msgOffset), sei.m_payloadSize);
+      auto country = br.ReadBits(8);
+      auto provider = br.ReadBits(16);
+      if (country == 0x26 && provider == 0x0004)
+      {
+        isCuva = true;
+      }
+    }
+
+    if (!isCuva)
+    {
+      // Keep non-CUVA SEI messages with boundary checking
+      size_t msgStart = sei.m_msgOffset;
+      size_t payloadDataSize = (sei.m_payloadOffset - sei.m_msgOffset) + sei.m_payloadSize;
+      size_t msgEnd = msgStart + payloadDataSize;
+
+      // Add boundary check to prevent buffer overflow
+      if (msgStart < buf.size() && msgEnd <= buf.size())
+      {
+        newRbsp.insert(newRbsp.end(), buf.begin() + msgStart, buf.begin() + msgEnd);
+      }
+      else
+      {
+        CLog::LogF(LOGWARNING, "HevcSei: SEI message boundary out of range (start={}, end={}, buf={})", 
+                   msgStart, msgEnd, buf.size());
+      }
+    }
+    else {
+      CLog::LogF(LOGDEBUG, "HevcSei: Removing CUVA HDR VIVID SEI message");
+    }
+  }
+
+  // Append HDR10 SEI messages
+  auto appendSei = [&](int payloadType, const std::vector<uint8_t>& data) {
+    int type = payloadType;
+    if (type < 255)
+    {
+      newRbsp.push_back(type & 0xFF);
+    }
+    else
+    {
+      int full = type;
+      while (full >= 255)
+      {
+        newRbsp.push_back(0xFF);
+        full -= 255;
+      }
+      newRbsp.push_back(full);
+    }
+
+    int size = static_cast<int>(data.size());
+    int fullSize = size;
+    while (fullSize >= 255)
+    {
+      newRbsp.push_back(0xFF);
+      fullSize -= 255;
+    }
+    newRbsp.push_back(fullSize);
+
+    newRbsp.insert(newRbsp.end(), data.begin(), data.end());
+  };
+
+  appendSei(137, masteringSei);   // mastering_display_colour_volume
+  appendSei(144, contentLightSei); // content_light_level_info
+
+  // Add emulation prevention 3 bytes
+  HevcAddStartCodeEmulationPrevention3Byte(newRbsp);
+
+  // CRITICAL FIX: Add rbsp_trailing_bits (0x80) as required by HEVC spec
+  if (!newRbsp.empty())
+  {
+    if (newRbsp.back() != 0x80)
+    {
+      newRbsp.push_back(0x80); // rbsp_trailing_bits
+    }
+  }
+
+  return newRbsp;
 }

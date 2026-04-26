@@ -44,10 +44,65 @@ msgctxt "#2"
 msgid "Music"
 msgstr ""
 
-#: system/settings/settings.xml
-#: xbmc/media/MediaTypes.cpp
-#: addons/skin.estuary/xml/Custom_1103_SourcesDialog.xml
-#: addons/skin.estuary/xml/Variables.xml
+#: xbmc/windowing/amlogic/DolbyVisionAML.cpp
+msgctxt "#60608"
+msgid "HDR VIVID (CUVA) VS10 mode"
+msgstr "HDR VIVID (CUVA) VS10 mode"
+
+#: xbmc/windowing/amlogic/DolbyVisionAML.cpp
+msgctxt "#60609"
+msgid "Select the VS10 mode for HDR VIVID (CUVA) content"
+msgstr "Select the VS10 mode for HDR VIVID (CUVA) content"
+
+#: xbmc/windowing/amlogic/DolbyVisionAML.cpp
+msgctxt "#60610"
+msgid "HDR VIVID (CUVA) process mode"
+msgstr "HDR VIVID (CUVA) process mode"
+
+#: xbmc/windowing/amlogic/DolbyVisionAML.cpp
+msgctxt "#60611"
+msgid "Select the process mode for HDR VIVID (CUVA) content"
+msgstr "Select the process mode for HDR VIVID (CUVA) content"
+
+#: xbmc/windowing/amlogic/DolbyVisionAML.cpp
+msgctxt "#60612"
+msgid "BYPASS"
+msgstr "OFF"
+
+#: xbmc/windowing/amlogic/DolbyVisionAML.cpp
+msgctxt "#60613"
+msgid "SDR"
+msgstr "SDR"
+
+#: xbmc/windowing/amlogic/DolbyVisionAML.cpp
+msgctxt "#60614"
+msgid "HDR"
+msgstr "HDR"
+
+#: xbmc/windowing/amlogic/DolbyVisionAML.cpp
+msgctxt "#60615"
+msgid "HLG"
+msgstr "HLG"
+
+#: xbmc/windowing/amlogic/DolbyVisionAML.cpp
+msgctxt "#60604"
+msgid "Choose DV or HDR VIVID (CUVA) video stream to output when both are present"
+msgstr "Choose DV or HDR VIVID (CUVA) video stream to output when both are present"
+
+#: xbmc/windowing/amlogic/DolbyVisionAML.cpp
+msgctxt "#60605"
+msgid "When both DV and HDR VIVID (CUVA) video streams are present, choose which video stream to output."
+msgstr "When both DV and HDR VIVID (CUVA) video streams are present, choose which video stream to output."
+
+#: xbmc/windowing/amlogic/DolbyVisionAML.cpp
+msgctxt "#60606"
+msgid "DV"
+msgstr "DV"
+
+#: xbmc/windowing/amlogic/DolbyVisionAML.cpp
+msgctxt "#60607"
+msgid "HDR VIVID"
+msgstr "HDR VIVID"
 #: addons/skin.estuary/xml/SkinSettings.xml
 #: addons/skin.estuary/xml/Home.xml
 msgctxt "#3"

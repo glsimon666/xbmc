@@ -15,6 +15,19 @@
 #include "BitstreamReader.h"
 #include "HDR10Plus.h"
 
+class CBitstreamWriter
+{
+private:
+  std::vector<uint8_t> m_buffer;
+  int m_posBits{0};
+
+public:
+  void WriteBits(uint32_t value, int numBits);
+  void WriteByte(uint8_t byte);
+  void ByteAlign();
+  std::vector<uint8_t> GetData() const;
+};
+
 struct DisplayPrimary {
   uint16_t x;
   uint16_t y;
@@ -81,6 +94,12 @@ public:
   static const std::vector<uint8_t> RemoveHdr10PlusFromSeiNalu(
       const uint8_t* inData, const size_t inDataLen);
 
+  static const std::vector<uint8_t> RemoveCuvaFromSeiNalu(
+      const uint8_t* inData, const size_t inDataLen);
+  
+  static const std::vector<uint8_t> ConvertCuvaToHdr10(
+      const uint8_t* inData, const size_t inDataLen);
+
   static const std::optional<const Hdr10PlusMetadata> ExtractHdr10Plus(
     const std::vector<CHevcSei>& messages,
     const std::vector<uint8_t>& buf);
@@ -92,6 +111,12 @@ public:
   static const std::optional<ContentLightLevel> ExtractContentLightLevel(
     const std::vector<CHevcSei>& messages,
     const std::vector<uint8_t>& buf);
+
+  // CUVA HDR VIVID related functions
+  static std::optional<const CHevcSei*> FindCuvaSeiMessage(
+      std::vector<uint8_t>& buf, const std::vector<CHevcSei>& messages);
+  static bool IsCuvaHdrVivid(const std::vector<CHevcSei>& messages,
+                             std::vector<uint8_t>& buf);
 
 private:
   // Parses single SEI message from the reader and pushes it to the list

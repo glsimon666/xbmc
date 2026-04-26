@@ -1809,7 +1809,23 @@ bool CAMLCodec::OpenDecoder(bool restart)
   am_private->gcodec.dec_mode    = STREAM_TYPE_FRAME;
   am_private->gcodec.video_path  = FRAME_BASE_PATH_AMLVIDEO_AMVIDEO;
 
-  if (!restart) aml_dv_open(m_hints.hdrType, m_hints.bitdepth);
+  if (!restart)
+  {
+    // Set CUVA priority based on user setting and current HDR type
+    if (m_hints.hdrType == StreamHdrType::HDR_TYPE_CUVA)
+    {
+      int cuvaPriority = CServiceBroker::GetSettingsComponent()->GetSettings()->GetInt(CSettings::SETTING_COREELEC_AMLOGIC_DV_CUVA_PRIORITY);
+      aml_set_cuva_priority(cuvaPriority);
+      CLog::Log(LOGINFO, "CAMLCodec::OpenDecoder - Set CUVA priority to {} for HDR type {}", cuvaPriority, CStreamDetails::HdrTypeToString(m_hints.hdrType));
+    }
+    else
+    {
+      // Reset CUVA priority to default for non-CUVA content
+      aml_set_cuva_priority(0);
+    }
+    
+    aml_dv_open(m_hints.hdrType, m_hints.bitdepth);
+  }
 
   // Now have the HDRType resolved, ok to set the transfer pq - so renderer can set the shaders as needed.
   aml_set_transfer_pq(hints.hdrType, hints.bitdepth);
@@ -2090,6 +2106,11 @@ void CAMLCodec::CloseDecoder(bool restart)
   if (!restart)
   {
     aml_dv_close();
+    
+    // Reset CUVA priority to default
+    aml_set_cuva_priority(0);
+    CLog::Log(LOGINFO, "CAMLCodec::CloseDecoder - Reset CUVA priority to default (0)");
+    
     aml_set_transfer_pq(StreamHdrType::HDR_TYPE_NONE, 0);
     aml_set_osd_pq_bypass(StreamHdrType::HDR_TYPE_NONE);
   }

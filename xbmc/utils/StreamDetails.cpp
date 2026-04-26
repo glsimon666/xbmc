@@ -669,6 +669,8 @@ std::string CStreamDetails::HdrTypeToString(StreamHdrType hdrType)
       return "hdr10+";
     case StreamHdrType::HDR_TYPE_HLG:
       return "hlg";
+    case StreamHdrType::HDR_TYPE_CUVA:
+      return "cuva";
     case StreamHdrType::HDR_TYPE_NONE:
     default:
       return "";
