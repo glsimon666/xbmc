@@ -67,7 +67,7 @@ public:
   void SetVideoSourceHdrType(StreamHdrType hdrType);
   StreamHdrType GetVideoSourceHdrType();
   void SetVideoSourceAdditionalHdrType(StreamHdrType hdrType);
-  StreamHdrType GetVideoSourceAdditionalHdrType();
+  std::vector<StreamHdrType> GetVideoSourceAdditionalHdrTypes();
   void SetVideoColorSpace(AVColorSpace colorSpace);
   AVColorSpace GetVideoColorSpace();
   void SetVideoColorRange(AVColorRange colorRange);
@@ -287,7 +287,7 @@ protected:
     int bitDepth = 0;
     StreamHdrType hdrType = StreamHdrType::HDR_TYPE_NONE;
     StreamHdrType sourceHdrType = StreamHdrType::HDR_TYPE_NONE;
-    StreamHdrType sourceAdditionalHdrType = StreamHdrType::HDR_TYPE_NONE;
+    std::vector<StreamHdrType> sourceAdditionalHdrTypes;
     AVColorSpace colorSpace = AVCOL_SPC_UNSPECIFIED;
     AVColorRange colorRange = AVCOL_RANGE_UNSPECIFIED;
     AVColorPrimaries colorPrimaries = AVCOL_PRI_UNSPECIFIED;

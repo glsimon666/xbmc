@@ -258,14 +258,17 @@ void CDataCacheCore::SetVideoSourceAdditionalHdrType(StreamHdrType hdrType)
 {
   std::lock_guard lock(m_videoPlayerSection);
 
-  m_playerVideoInfo.sourceAdditionalHdrType = hdrType;
+  // Only add if not already present
+  if (std::find(m_playerVideoInfo.sourceAdditionalHdrTypes.begin(), m_playerVideoInfo.sourceAdditionalHdrTypes.end(), hdrType) == m_playerVideoInfo.sourceAdditionalHdrTypes.end()) {
+    m_playerVideoInfo.sourceAdditionalHdrTypes.push_back(hdrType);
+  }
 }
 
-StreamHdrType CDataCacheCore::GetVideoSourceAdditionalHdrType()
+std::vector<StreamHdrType> CDataCacheCore::GetVideoSourceAdditionalHdrTypes()
 {
   std::lock_guard lock(m_videoPlayerSection);
 
-  return m_playerVideoInfo.sourceAdditionalHdrType;
+  return m_playerVideoInfo.sourceAdditionalHdrTypes;
 }
 
 void CDataCacheCore::SetVideoColorSpace(AVColorSpace colorSpace)

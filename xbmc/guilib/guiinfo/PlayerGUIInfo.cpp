@@ -644,11 +644,43 @@ bool CPlayerGUIInfo::GetLabel(std::string& value, const CFileItem *item, int con
       value = std::to_string(static_cast<int>(CServiceBroker::GetDataCacheCore().GetVideoSourceHdrType()));
       return true;
     case PLAYER_PROCESS_VIDEO_SOURCE_ADDITIONAL_HDR_TYPE:
-      value = HdrTypeToString(CServiceBroker::GetDataCacheCore().GetVideoSourceAdditionalHdrType());
+    {
+      auto hdrTypes = CServiceBroker::GetDataCacheCore().GetVideoSourceAdditionalHdrTypes();
+      if (!hdrTypes.empty())
+      {
+        std::stringstream ss;
+        for (size_t i = 0; i < hdrTypes.size(); i++)
+        {
+          if (i > 0) ss << "|";
+          ss << HdrTypeToString(hdrTypes[i]);
+        }
+        value = ss.str();
+      }
+      else
+      {
+        value = HdrTypeToString(StreamHdrType::HDR_TYPE_NONE);
+      }
       return true;
+    }
     case PLAYER_PROCESS_VIDEO_SOURCE_ADDITIONAL_HDR_TYPE_RAW:
-      value = std::to_string(static_cast<int>(CServiceBroker::GetDataCacheCore().GetVideoSourceAdditionalHdrType()));
+    {
+      auto hdrTypes = CServiceBroker::GetDataCacheCore().GetVideoSourceAdditionalHdrTypes();
+      if (!hdrTypes.empty())
+      {
+        std::stringstream ss;
+        for (size_t i = 0; i < hdrTypes.size(); i++)
+        {
+          if (i > 0) ss << "|";
+          ss << static_cast<int>(hdrTypes[i]);
+        }
+        value = ss.str();
+      }
+      else
+      {
+        value = std::to_string(static_cast<int>(StreamHdrType::HDR_TYPE_NONE));
+      }
       return true;
+    }
     case PLAYER_PROCESS_VIDEO_WIDTH_RAW:
       value = std::to_string(CServiceBroker::GetDataCacheCore().GetVideoWidth());
       return true;
