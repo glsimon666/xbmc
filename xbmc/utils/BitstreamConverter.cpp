@@ -1156,25 +1156,33 @@ void CBitstreamConverter::ProcessSeiPrefix(uint8_t *buf, int32_t nal_size, uint8
       }
 
       if (m_first_frame) {
-        if (removeCuva && isDual) {
-          // For dual stream, keep HDR type as CUVA but use HDR10 for internal processing
-          m_hints.hdrType = StreamHdrType::HDR_TYPE_CUVA;
-          CLog::Log(LOGDEBUG, "BitstreamConverter: CUVA in dual stream, removing HDR VIVID SEI");
-          m_dataCacheCore.SetVideoHdrType(StreamHdrType::HDR_TYPE_CUVA); // Always show HDR VIVID in UI
-          m_dataCacheCore.SetVideoSourceHdrType(StreamHdrType::HDR_TYPE_HDR10); // Use HDR10 for internal processing
-          m_dataCacheCore.SetVideoSourceAdditionalHdrType(StreamHdrType::HDR_TYPE_DOLBYVISION);
+        if (isDual) {
+          if (m_cuva_priority) {
+            // HDR VIVID priority: keep HDR type as CUVA and use CUVA processing
+            m_hints.hdrType = StreamHdrType::HDR_TYPE_CUVA;
+            CLog::Log(LOGDEBUG, "BitstreamConverter: CUVA in dual stream, HDR VIVID priority, using CUVA processing");
+            m_dataCacheCore.SetVideoHdrType(StreamHdrType::HDR_TYPE_CUVA);
+            m_dataCacheCore.SetVideoSourceHdrType(StreamHdrType::HDR_TYPE_CUVA);
+            m_dataCacheCore.SetVideoSourceAdditionalHdrType(StreamHdrType::HDR_TYPE_DOLBYVISION);
+          } else {
+            // DV priority: remove HDR VIVID SEI and use DV processing
+            m_hints.hdrType = StreamHdrType::HDR_TYPE_DOLBYVISION;
+            CLog::Log(LOGDEBUG, "BitstreamConverter: CUVA in dual stream, DV priority, removing HDR VIVID SEI and using DV processing");
+            m_dataCacheCore.SetVideoHdrType(StreamHdrType::HDR_TYPE_DOLBYVISION);
+            m_dataCacheCore.SetVideoSourceHdrType(StreamHdrType::HDR_TYPE_DOLBYVISION);
+            m_dataCacheCore.SetVideoSourceAdditionalHdrType(StreamHdrType::HDR_TYPE_CUVA);
+          }
         } else {
           m_hints.hdrType = StreamHdrType::HDR_TYPE_CUVA;
           CLog::Log(LOGDEBUG, "BitstreamConverter: Set hdrType to CUVA");
           m_dataCacheCore.SetVideoHdrType(StreamHdrType::HDR_TYPE_CUVA);
           m_dataCacheCore.SetVideoSourceHdrType(StreamHdrType::HDR_TYPE_CUVA);
-          if (isDual) m_dataCacheCore.SetVideoSourceAdditionalHdrType(StreamHdrType::HDR_TYPE_DOLBYVISION);
         }
       }
 
-      if (removeCuva && isDual) {
-        // Only handle dual stream (DV + HDR VIVID), remove HDR VIVID SEI
-        CLog::Log(LOGDEBUG, "BitstreamConverter: Removing CUVA HDR VIVID SEI from dual stream");
+      if (isDual && !m_cuva_priority) {
+        // DV priority: remove HDR VIVID SEI from dual stream
+        CLog::Log(LOGDEBUG, "BitstreamConverter: Removing CUVA HDR VIVID SEI from dual stream (DV priority)");
         auto nalu = CHevcSei::RemoveCuvaFromSeiNalu(buf, nal_size);
         if (!nalu.empty())
         {
