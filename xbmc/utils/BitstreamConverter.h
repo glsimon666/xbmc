@@ -167,6 +167,7 @@ protected:
   // bitstream to bytestream (Annex B) conversion support.
   bool IsIDR(uint8_t unit_type);
   bool IsSlice(uint8_t unit_type);
+  int ExtractPOC(const uint8_t* buf, int size);
   bool BitstreamConvertInitAVC(void* in_extradata, int in_extrasize);
   bool BitstreamConvertInitHEVC(void* in_extradata, int in_extrasize);
   bool BitstreamConvert(uint8_t* pData, int iSize, uint8_t** poutbuf, int* poutbuf_size, double pts);

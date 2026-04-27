@@ -4365,8 +4365,9 @@ int CVideoPlayer::OnDiscNavResult(void* pData, int iMessage)
     break;
     case BD_EVENT_DISCONTINUITY:
       CLog::Log(LOGDEBUG,
-                "CVideoPlayer::OnDiscNavResult - libbluray discontinuity detected (DEMUXER_RESET)");
-      m_messenger.Put(std::make_shared<CDVDMsg>(CDVDMsg::DEMUXER_RESET));
+                "CVideoPlayer::OnDiscNavResult - libbluray discontinuity detected (bypassed)");
+      // Bypass discontinuity handling to avoid ptsTracker flush
+      // This maintains pattern continuity for seamless FEL ISO playback
       break;
     default:
       break;

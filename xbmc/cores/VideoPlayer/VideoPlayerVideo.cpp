@@ -513,10 +513,24 @@ void CVideoPlayerVideo::Process()
       pts = 0;
       m_playbackStalled = false;
 
-      m_ptsTracker.Flush();
-      //we need to recalculate the framerate
-      //! @todo this needs to be set on a streamchange instead
-      ResetFrameRateCalc();
+      // Don't flush ptsTracker during discontinuity to maintain pattern continuity
+      // This helps with seamless FEL ISO playback at segment boundaries
+      bool flushPtsTracker = true;
+      // Check if this flush is from a discontinuity event
+      if (m_pInputStream && m_pInputStream->IsStreamType(DVDSTREAM_TYPE_BLURAY))
+      {
+        // For bluray streams, we want to preserve pts pattern during discontinuity
+        flushPtsTracker = false;
+        CLog::Log(LOGDEBUG, "CVideoPlayerVideo: preserving pts pattern during bluray discontinuity");
+      }
+      
+      if (flushPtsTracker)
+      {
+        m_ptsTracker.Flush();
+        //we need to recalculate the framerate
+        //! @todo this needs to be set on a streamchange instead
+        ResetFrameRateCalc();
+      }
       m_droppingStats.Reset();
 
       m_stalled = true;

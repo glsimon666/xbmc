@@ -229,7 +229,7 @@ void CFileCache::Process()
   std::unique_ptr<char[]> buffer(new char[m_chunkSize]);
   if (buffer == nullptr)
   {
-    CLog::Log(LOGERROR, "CFileCache::{} - <{}> failed to allocate read buffer", __FUNCTION__,
+    CLog::Log(LOGERROR, "CFileCache::{} - <{}> failed to allocate read buffer", __FUNCTION__, 
               m_sourcePath);
     return;
   }
@@ -239,6 +239,8 @@ void CFileCache::Process()
     return;
 
   float readFactor = settings->GetInt(CSettings::SETTING_FILECACHE_READFACTOR) / 100.0f;
+
+
 
   const bool useAdaptativeReadFactor = (readFactor < 1.0f);
 

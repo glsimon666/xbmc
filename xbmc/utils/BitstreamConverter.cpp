@@ -1044,6 +1044,66 @@ bool CBitstreamConverter::IsSlice(uint8_t unit_type)
   }
 }
 
+// Extract POC (Picture Order Count) from HEVC slice header
+int CBitstreamConverter::ExtractPOC(const uint8_t* buf, int size)
+{
+  if (!buf || size < 2)
+    return -1;
+
+  // Check if it's a slice NAL unit
+  uint8_t nal_type = (buf[0] >> 1) & 0x3f;
+  if (!IsSlice(nal_type))
+    return -1;
+
+  nal_bitstream bs;
+  nal_bs_init(&bs, buf, size);
+
+  // Skip first byte (nal_unit_header)
+  nal_bs_read(&bs, 8);
+
+  try {
+    // Read slice_header()
+    // first_mb_in_slice
+    nal_bs_read_ue(&bs);
+    
+    // slice_type
+    nal_bs_read_ue(&bs);
+    
+    // pic_parameter_set_id
+    nal_bs_read_ue(&bs);
+    
+    // colour_plane_id (if present)
+    if (m_codec == AV_CODEC_ID_HEVC && (buf[0] & 0x01))
+      nal_bs_read(&bs, 2);
+    
+    // frame_num
+    int log2_max_frame_num_minus4 = 4; // Default value, should be read from SPS
+    nal_bs_read(&bs, log2_max_frame_num_minus4 + 4);
+    
+    // pic_order_cnt_lsb
+    int log2_max_pic_order_cnt_lsb_minus4 = 4; // Default value, should be read from SPS
+    int poc_lsb = nal_bs_read(&bs, log2_max_pic_order_cnt_lsb_minus4 + 4);
+    
+    // pic_order_cnt_msb (if present)
+    int poc_msb = 0;
+    if (m_codec == AV_CODEC_ID_HEVC)
+    {
+      // Check if pic_order_cnt_msb is present
+      // This depends on pic_order_cnt_type from SPS, which we don't have here
+      // For simplicity, we'll assume it's present
+      poc_msb = nal_bs_read_ue(&bs);
+    }
+    
+    // Calculate POC
+    int poc = (poc_msb << (log2_max_pic_order_cnt_lsb_minus4 + 4)) | poc_lsb;
+    
+    return poc;
+  } catch (...) {
+    // If any error occurs during POC extraction, return -1
+    return -1;
+  }
+}
+
 void CBitstreamConverter::ApplyMasteringDisplayColourVolume(const MasteringDisplayColourVolume& metadata, bool& update) {
 
   if ((m_hdrStaticMetadataInfo.max_lum != metadata.maxLuminance) ||

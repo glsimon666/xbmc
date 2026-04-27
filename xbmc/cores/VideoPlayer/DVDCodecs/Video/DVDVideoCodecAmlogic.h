@@ -29,7 +29,7 @@ class CSetting;
 
 class CDVDVideoCodecAmlogic;
 
-typedef std::tuple<uint8_t*, uint32_t, bool, double> DLDemuxPacket;
+typedef std::tuple<uint8_t*, uint32_t, bool, double, int> DLDemuxPacket;
 
 class CAMLVideoBuffer : public CVideoBuffer
 {
