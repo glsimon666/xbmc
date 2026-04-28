@@ -169,6 +169,22 @@ bool CGUIWindowFullScreen::OnAction(const CAction &action)
         appPlayer->AddSubtitle(path);
       return true;
     }
+  case ACTION_MOVE_UP:
+    {
+      if (appPlayer->IsInMenu())
+        break;
+      m_subtitleDynamicOffset -= 1.0f;
+      appPlayer->SetDynamicSubtitleOffset(m_subtitleDynamicOffset);
+      return true;
+    }
+  case ACTION_MOVE_DOWN:
+    {
+      if (appPlayer->IsInMenu())
+        break;
+      m_subtitleDynamicOffset += 1.0f;
+      appPlayer->SetDynamicSubtitleOffset(m_subtitleDynamicOffset);
+      return true;
+    }
   default:
       break;
   }
@@ -210,6 +226,7 @@ bool CGUIWindowFullScreen::OnMessage(CGUIMessage& message)
       GUIINFO::CPlayerGUIInfo& guiInfo = CServiceBroker::GetGUI()->GetInfoManager().GetInfoProviders().GetPlayerInfoProvider();
       guiInfo.SetShowInfo(false);
       m_bShowCurrentTime = false;
+      m_subtitleDynamicOffset = 0.0f;
 
       // switch resolution
       CServiceBroker::GetWinSystem()->GetGfxContext().SetFullScreenVideo(true);

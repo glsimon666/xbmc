@@ -103,6 +103,7 @@ void CRenderer::Reset()
 {
   m_subtitlePosition = 0;
   m_subtitlePosResInfo = -1;
+  m_subtitleDynamicOffset.store(0.0f, std::memory_order_relaxed);
 }
 
 void CRenderer::Release(int idx)
@@ -255,6 +256,21 @@ void CRenderer::Render(COverlay* o) const {
 
   state.x += GetStereoscopicDepth(o->m_pgsSubtitle, o->m_3dSubtitleDepth);
 
+  // Classify non-ASS subtitles (image/SPU) based on final screen y position
+  // ASS subtitles are classified earlier in ConvertLibass based on rOpts.position
+  if (o->m_align != COverlay::ALIGN_SCREEN)
+  {
+    float dynamicThreshold = m_rv.y1 + m_rv.Height() * 0.8f;
+    o->m_isDynamic = (state.y >= dynamicThreshold);
+  }
+
+  // Apply dynamic subtitle offset (percentage of screen height)
+  // Only affects subtitles marked as dynamic (m_isDynamic == true)
+  if (o->m_isDynamic)
+  {
+    state.y += m_rv.Height() * m_subtitleDynamicOffset.load(std::memory_order_relaxed) / 100.0f;
+  }
+
   o->Render(state);
 }
 
@@ -282,6 +298,11 @@ void CRenderer::OnViewChange()
 void CRenderer::SetStereoMode(const std::string &stereomode)
 {
   m_stereomode = stereomode;
+}
+
+void CRenderer::SetDynamicSubtitleOffset(const float value)
+{
+  m_subtitleDynamicOffset.store(value, std::memory_order_relaxed);
 }
 
 void CRenderer::SetSubtitleVerticalPosition(const int value, bool save)
@@ -524,6 +545,9 @@ std::shared_ptr<COverlay> CRenderer::ConvertLibass(
   }
 
   std::shared_ptr<COverlay> overlay = COverlay::Create(images, rOpts.frameWidth, rOpts.frameHeight);
+
+  // Classify ASS/libass subtitles based on libass line position (0=bottom, 100=top)
+  overlay->m_isDynamic = (rOpts.position < 20.0);
 
   m_textureCache[m_textureid] = overlay;
   o.m_textureid = m_textureid;
