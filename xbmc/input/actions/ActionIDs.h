@@ -412,6 +412,9 @@ constexpr const int ACTION_SUBTITLE_VSHIFT_UP = 230; //!< shift up subtitles in 
 constexpr const int ACTION_SUBTITLE_VSHIFT_DOWN = 231; //!< shift down subtitles in VideoPlayer
 constexpr const int ACTION_SUBTITLE_ALIGN = 232; //!< toggle vertical alignment of subtitles
 
+constexpr const int ACTION_FILTER = 233;
+constexpr const int ACTION_SWITCH_PLAYER = 234;
+
 constexpr const int ACTION_STEREOMODE_NEXT = 235;
 constexpr const int ACTION_STEREOMODE_PREVIOUS = 236;
 constexpr const int ACTION_STEREOMODE_TOGGLE = 237; //!< turns 3d mode on/off
