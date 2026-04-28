@@ -84,6 +84,8 @@ namespace OVERLAY {
     int m_3dSubtitleDepth{0};
     bool m_pgsSubtitle{false};
 
+    bool m_isDynamic{false}; // true if subtitle can be moved up/down (dynamic), false if fixed (static)
+
   protected:
     /*!
      * \brief Given the resolution ratio determines if it is a 4/3 resolution
@@ -129,6 +131,13 @@ namespace OVERLAY {
      * \param save If true, the value will be saved to resolution info
      */
     void SetSubtitleVerticalPosition(const int value, bool save);
+
+    /*!
+     * \brief Set the dynamic subtitle offset,
+     * in percentage of screen height (-100 ~ 100, negative = up, positive = down)
+     * \param value The offset percentage
+     */
+    void SetDynamicSubtitleOffset(const float value);
 
   protected:
     /*!
@@ -201,6 +210,8 @@ namespace OVERLAY {
         KODI::SUBTITLES::HorizontalAlign::CENTER};
     KODI::SUBTITLES::Align m_subtitleAlign{KODI::SUBTITLES::Align::BOTTOM_OUTSIDE};
 
+    mutable std::atomic<float> m_subtitleDynamicOffset{0.0f}; // dynamic subtitle offset in percentage of screen height
+                                                              // negative = up, positive = down
     std::shared_ptr<struct KODI::SUBTITLES::STYLE::style> m_overlayStyle;
     std::atomic<bool> m_isSettingsChanged{false};
   };
