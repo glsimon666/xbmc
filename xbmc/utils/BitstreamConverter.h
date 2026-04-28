@@ -171,6 +171,7 @@ protected:
   bool IsSlice(uint8_t unit_type);
   bool BitstreamConvertInitAVC(void* in_extradata, int in_extrasize);
   bool BitstreamConvertInitHEVC(void* in_extradata, int in_extrasize);
+  void ParseHEVCSPS(const uint8_t* sps, uint16_t sps_size);
   bool BitstreamConvert(uint8_t* pData, int iSize, uint8_t** poutbuf, int* poutbuf_size, double pts);
   static void BitstreamAllocAndCopy(uint8_t** poutbuf,
                                     int* poutbuf_size,
@@ -212,6 +213,7 @@ protected:
 
   uint32_t m_sps_pps_size;
   omx_bitstream_ctx m_sps_pps_context;
+  int m_log2_max_pic_order_cnt_lsb_minus4{4};
   bool m_convert_bitstream;
   bool m_to_annexb;
   bool m_combine;

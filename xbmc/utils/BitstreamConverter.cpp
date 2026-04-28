@@ -934,6 +934,7 @@ bool CBitstreamConverter::BitstreamConvertInitHEVC(void* in_extradata, int in_ex
 {
   m_sps_pps_size = 0;
   m_sps_pps_context.sps_pps_data = NULL;
+  m_log2_max_pic_order_cnt_lsb_minus4 = 4;
 
   // nothing to filter
   if (!in_extradata || in_extrasize < 23)
@@ -944,6 +945,8 @@ bool CBitstreamConverter::BitstreamConvertInitHEVC(void* in_extradata, int in_ex
   uint8_t *out = NULL, array_nb, nal_type, sps_seen = 0, pps_seen = 0;
   const uint8_t* extradata = (uint8_t*)in_extradata + 21;
   static const uint8_t nalu_header[4] = {0, 0, 0, 1};
+  const uint8_t* sps_start = NULL;
+  uint16_t sps_size = 0;
 
   // retrieve length coded size
   m_sps_pps_context.length_size = (*extradata++ & 0x3) + 1;
@@ -974,6 +977,13 @@ bool CBitstreamConverter::BitstreamConvertInitHEVC(void* in_extradata, int in_ex
         extradata += unit_size;
         continue;
       }
+
+      if (nal_type == HEVC_NAL_SPS && !sps_seen)
+      {
+        sps_start = extradata;
+        sps_size = unit_size;
+      }
+
       total_size += unit_size + 4;
 
       if (total_size > INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE ||
@@ -1002,6 +1012,12 @@ bool CBitstreamConverter::BitstreamConvertInitHEVC(void* in_extradata, int in_ex
     CLog::Log(LOGDEBUG, "SPS NALU missing or invalid. The resulting stream may not play");
   if (!pps_seen)
     CLog::Log(LOGDEBUG, "PPS NALU missing or invalid. The resulting stream may not play");
+
+  // Parse SPS to extract log2_max_pic_order_cnt_lsb_minus4
+  if (sps_start && sps_size > 0)
+  {
+    ParseHEVCSPS(sps_start, sps_size);
+  }
 
   m_sps_pps_context.sps_pps_data = out;
   m_sps_pps_context.size = total_size;
@@ -1074,9 +1090,8 @@ int CBitstreamConverter::ExtractPOC(const uint8_t* buf, int size)
 
   // For dependent slices, there would be dependent_slice_segment_flag, but we assume independence
 
-  // slice_pic_order_cnt_lsb - use default log2_max_poc_lsb = 4 (means 8 bits)
-  // This should come from SPS, but we use a reasonable default for matching purposes
-  int log2_max_poc_lsb = 4;
+  // slice_pic_order_cnt_lsb - length from SPS (log2_max_pic_order_cnt_lsb_minus4 + 4)
+  int log2_max_poc_lsb = m_log2_max_pic_order_cnt_lsb_minus4 + 4;
   int poc_lsb = nal_bs_read(&bs, log2_max_poc_lsb);
 
   return poc_lsb;
@@ -1653,6 +1668,51 @@ bool CBitstreamConverter::mpeg2_sequence_header(const uint8_t* data,
   }
 
   return changed;
+}
+
+void CBitstreamConverter::ParseHEVCSPS(const uint8_t* sps, uint16_t sps_size)
+{
+  if (!sps || sps_size < 4)
+    return;
+
+  nal_bitstream bs;
+  nal_bs_init(&bs, sps, sps_size);
+
+  try
+  {
+    nal_bs_read(&bs, 4); // sps_video_parameter_set_id
+    nal_bs_read(&bs, 3); // sps_max_sub_layers_minus1
+    nal_bs_read(&bs, 1); // sps_temporal_id_nesting_flag
+    nal_bs_read_ue(&bs); // sps_seq_parameter_set_id
+
+    int chroma_format_idc = nal_bs_read_ue(&bs); // chroma_format_idc
+    if (chroma_format_idc == 3)
+      nal_bs_read(&bs, 1); // separate_colour_plane_flag
+
+    nal_bs_read_ue(&bs); // pic_width_in_luma_samples
+    nal_bs_read_ue(&bs); // pic_height_in_luma_samples
+
+    if (nal_bs_read(&bs, 1)) // conformance_window_flag
+    {
+      nal_bs_read_ue(&bs); // conf_win_left_offset
+      nal_bs_read_ue(&bs); // conf_win_right_offset
+      nal_bs_read_ue(&bs); // conf_win_top_offset
+      nal_bs_read_ue(&bs); // conf_win_bottom_offset
+    }
+
+    nal_bs_read_ue(&bs); // bit_depth_luma_minus8
+    nal_bs_read_ue(&bs); // bit_depth_chroma_minus8
+
+    m_log2_max_pic_order_cnt_lsb_minus4 = nal_bs_read_ue(&bs); // log2_max_pic_order_cnt_lsb_minus4
+
+    CLog::Log(LOGDEBUG, "CBitstreamConverter::ParseHEVCSPS: log2_max_pic_order_cnt_lsb_minus4 = {}",
+              m_log2_max_pic_order_cnt_lsb_minus4);
+  }
+  catch (...)
+  {
+    CLog::Log(LOGDEBUG, "CBitstreamConverter::ParseHEVCSPS: failed to parse SPS");
+    m_log2_max_pic_order_cnt_lsb_minus4 = 4;
+  }
 }
 
 bool CBitstreamConverter::h264_sequence_header(const uint8_t *data, const uint32_t size, h264_sequence *sequence)
