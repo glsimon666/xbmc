@@ -646,7 +646,7 @@ void CRenderer::LoadSettings()
   ResetSubtitlePosition();
 }
 
-void CRenderer::CalculateDialogueSubtitleArea(int videoWidth, int videoHeight, int& yStart, int& yEnd)
+void CRenderer::CalculateDialogueSubtitleArea(int videoWidth, int videoHeight, int& yStart, int& yEnd) const
 {
   float aspectRatio = static_cast<float>(videoWidth) / static_cast<float>(videoHeight);
 

@@ -208,6 +208,6 @@ namespace OVERLAY {
 
     int m_userDialogueSubtitleOffset{0};
 
-    void CalculateDialogueSubtitleArea(int videoWidth, int videoHeight, int& yStart, int& yEnd);
+    void CalculateDialogueSubtitleArea(int videoWidth, int videoHeight, int& yStart, int& yEnd) const;
   };
 }
