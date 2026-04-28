@@ -42,6 +42,19 @@ CPlayerController::CPlayerController()
   m_movingSpeed.AddEventConfig(ACTION_SUBTITLE_VSHIFT_DOWN, eventCfg);
 }
 
+void CPlayerController::AdjustUserDialogueSubtitleOffset(int delta)
+{
+  m_userDialogueSubtitleOffset += delta;
+
+  auto& components = CServiceBroker::GetAppComponents();
+  const auto appPlayer = components.GetComponent<CApplicationPlayer>();
+  appPlayer->SetUserDialogueSubtitleOffset(m_userDialogueSubtitleOffset);
+
+  CGUIDialogKaiToast::QueueNotification(
+      CGUIDialogKaiToast::Info, g_localizeStrings.Get(21460),
+      std::to_string(m_userDialogueSubtitleOffset) + " px", TOAST_DISPLAY_TIME, false);
+}
+
 CPlayerController::~CPlayerController() = default;
 
 CPlayerController& CPlayerController::GetInstance()

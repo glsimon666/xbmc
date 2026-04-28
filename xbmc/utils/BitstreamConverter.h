@@ -148,6 +148,8 @@ public:
   void SetRemoveDovi(bool value) { m_removeDovi = value; }
   void SetRemoveHdr10Plus(bool value) { m_removeHdr10Plus = value; }
 
+  int ExtractPOC(const uint8_t* buf, int size);
+
   static bool mpeg2_sequence_header(const uint8_t* data,
                                     const uint32_t size,
                                     mpeg2_sequence* sequence);
@@ -167,7 +169,6 @@ protected:
   // bitstream to bytestream (Annex B) conversion support.
   bool IsIDR(uint8_t unit_type);
   bool IsSlice(uint8_t unit_type);
-  int ExtractPOC(const uint8_t* buf, int size);
   bool BitstreamConvertInitAVC(void* in_extradata, int in_extrasize);
   bool BitstreamConvertInitHEVC(void* in_extradata, int in_extrasize);
   bool BitstreamConvert(uint8_t* pData, int iSize, uint8_t** poutbuf, int* poutbuf_size, double pts);

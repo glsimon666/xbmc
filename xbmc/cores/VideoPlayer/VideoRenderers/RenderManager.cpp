@@ -1011,6 +1011,11 @@ void CRenderManager::SetSubtitleVerticalPosition(int value, bool save)
   m_overlays.SetSubtitleVerticalPosition(value, save);
 }
 
+void CRenderManager::SetUserDialogueSubtitleOffset(int offset)
+{
+  m_overlays.SetUserDialogueSubtitleOffset(offset);
+}
+
 bool CRenderManager::AddVideoPicture(const VideoPicture& picture, volatile std::atomic_bool& bStop, EINTERLACEMETHOD deintMethod, bool wait)
 {
   int index;

@@ -54,4 +54,8 @@ private:
 
   int m_sliderAction = 0; ///< \brief set to the action id for a slider being displayed \sa ShowSlider
   UTILS::MOVING_SPEED::CMovingSpeed m_movingSpeed;
+  int m_userDialogueSubtitleOffset = 0;
+
+public:
+  void AdjustUserDialogueSubtitleOffset(int delta);
 };

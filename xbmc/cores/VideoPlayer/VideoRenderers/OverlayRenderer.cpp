@@ -177,6 +177,8 @@ void CRenderer::Render(COverlay* o) const {
   state.width = o->m_width;
   state.height = o->m_height;
 
+  float originalY = state.y;
+
   COverlay::EPosition pos = o->m_pos;
   COverlay::EAlign align = o->m_align;
 
@@ -255,6 +257,39 @@ void CRenderer::Render(COverlay* o) const {
 
   state.x += GetStereoscopicDepth(o->m_pgsSubtitle, o->m_3dSubtitleDepth);
 
+  if (m_userDialogueSubtitleOffset != 0)
+  {
+    int videoWidth = static_cast<int>(m_rs.Width());
+    int videoHeight = static_cast<int>(m_rs.Height());
+    int dialogueYStart, dialogueYEnd;
+    CalculateDialogueSubtitleArea(videoWidth, videoHeight, dialogueYStart, dialogueYEnd);
+
+    float scaledOriginalY = originalY;
+    if (pos == COverlay::POSITION_RELATIVE)
+    {
+      if (align == COverlay::ALIGN_SCREEN || align == COverlay::ALIGN_SUBTITLE)
+      {
+        scaledOriginalY = originalY * m_rv.Height();
+      }
+      else if (align == COverlay::ALIGN_SCREEN_AR)
+      {
+        float source_width = o->m_source_width > 0 ? o->m_source_width : m_rs.Width();
+        float source_height = o->m_source_height > 0 ? o->m_source_height : m_rs.Height();
+        float ratio = std::min<float>(m_rv.Width() / source_width, m_rv.Height() / source_height);
+        scaledOriginalY = originalY * ratio;
+      }
+      else if (align == COverlay::ALIGN_VIDEO)
+      {
+        scaledOriginalY = originalY * m_rs.Height();
+      }
+    }
+
+    if (scaledOriginalY >= dialogueYStart && scaledOriginalY <= dialogueYEnd)
+    {
+      state.y += m_userDialogueSubtitleOffset;
+    }
+  }
+
   o->Render(state);
 }
 
@@ -293,10 +328,14 @@ void CRenderer::SetSubtitleVerticalPosition(const int value, bool save)
   if (save && m_subtitleAlign == SUBTITLES::Align::MANUAL)
   {
     m_subtitlePosResInfo = POSRESINFO_SAVE_CHANGES;
-    // We save the value to XML file settings when playback is stopped
-    // to avoid saving to disk too many times
     m_saveSubtitlePosition = true;
   }
+}
+
+void CRenderer::SetUserDialogueSubtitleOffset(int offset)
+{
+  std::lock_guard lock(m_section);
+  m_userDialogueSubtitleOffset = offset;
 }
 
 void CRenderer::ResetSubtitlePosition()
@@ -605,4 +644,31 @@ void CRenderer::LoadSettings()
   m_subtitleHorizontalAlign = settings->GetHorizontalAlignment();
   m_subtitleAlign = settings->GetAlignment();
   ResetSubtitlePosition();
+}
+
+void CRenderer::CalculateDialogueSubtitleArea(int videoWidth, int videoHeight, int& yStart, int& yEnd)
+{
+  float aspectRatio = static_cast<float>(videoWidth) / static_cast<float>(videoHeight);
+
+  if (std::abs(aspectRatio - 16.0f / 9.0f) < 0.1f)
+  {
+    yStart = static_cast<int>(videoHeight * 0.8f);
+    yEnd = videoHeight;
+  }
+  else
+  {
+    int baseHeight;
+    if (videoWidth >= 3840)
+      baseHeight = 2160;
+    else if (videoWidth >= 1920)
+      baseHeight = 1080;
+    else if (videoWidth >= 1280)
+      baseHeight = 720;
+    else
+      baseHeight = videoHeight;
+
+    int singleSideBlackBar = (baseHeight - videoHeight) / 2;
+    yStart = baseHeight - singleSideBlackBar;
+    yEnd = baseHeight;
+  }
 }

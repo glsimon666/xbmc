@@ -163,6 +163,8 @@ public:
    */
   void SetSubtitleVerticalPosition(const int value, bool save);
 
+  void SetUserDialogueSubtitleOffset(int offset);
+
   void SetTime(int64_t time);
   void SetTotalTime(int64_t time);
   void SetVideoStream(int iStream);

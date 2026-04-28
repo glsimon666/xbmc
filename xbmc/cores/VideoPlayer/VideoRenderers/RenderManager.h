@@ -88,6 +88,8 @@ public:
    */
   void SetSubtitleVerticalPosition(const int value, bool save);
 
+  void SetUserDialogueSubtitleOffset(int offset);
+
   unsigned int AllocRenderCapture();
   void ReleaseRenderCapture(unsigned int captureId);
   void StartRenderCapture(unsigned int captureId, unsigned int width, unsigned int height, int flags);

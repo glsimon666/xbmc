@@ -132,6 +132,8 @@ public:
    */
   virtual void SetSubtitleVerticalPosition(int value, bool save) {}
 
+  virtual void SetUserDialogueSubtitleOffset(int offset) {}
+
   /** \brief Adds the subtitle(s) provided by the given file to the available player streams
   *          and actives the first of the added stream(s). E.g., vob subs can contain multiple streams.
   *   \param[in] strSubPath The full path of the subtitle file.

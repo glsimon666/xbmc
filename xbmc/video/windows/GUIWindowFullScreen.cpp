@@ -22,6 +22,7 @@
 #include "input/actions/Action.h"
 #include "input/actions/ActionIDs.h"
 #include "input/mouse/MouseEvent.h"
+#include "video/PlayerController.h"
 #include "settings/DisplaySettings.h"
 #include "settings/Settings.h"
 #include "settings/SettingsComponent.h"
@@ -169,6 +170,16 @@ bool CGUIWindowFullScreen::OnAction(const CAction &action)
         appPlayer->AddSubtitle(path);
       return true;
     }
+  case ACTION_CHAPTER_OR_BIG_STEP_FORWARD:
+  {
+    CPlayerController::GetInstance().AdjustUserDialogueSubtitleOffset(-10);
+    return true;
+  }
+  case ACTION_CHAPTER_OR_BIG_STEP_BACK:
+  {
+    CPlayerController::GetInstance().AdjustUserDialogueSubtitleOffset(10);
+    return true;
+  }
   default:
       break;
   }

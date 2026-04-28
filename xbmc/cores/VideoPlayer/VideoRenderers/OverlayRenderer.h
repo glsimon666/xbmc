@@ -130,6 +130,8 @@ namespace OVERLAY {
      */
     void SetSubtitleVerticalPosition(const int value, bool save);
 
+    void SetUserDialogueSubtitleOffset(int offset);
+
   protected:
     /*!
      * \brief Reset the subtitle position to default value
@@ -203,5 +205,9 @@ namespace OVERLAY {
 
     std::shared_ptr<struct KODI::SUBTITLES::STYLE::style> m_overlayStyle;
     std::atomic<bool> m_isSettingsChanged{false};
+
+    int m_userDialogueSubtitleOffset{0};
+
+    void CalculateDialogueSubtitleArea(int videoWidth, int videoHeight, int& yStart, int& yEnd);
   };
 }
