@@ -542,27 +542,27 @@ bool CDVDVideoCodecAmlogic::DualLayerConvert(uint8_t *pData, uint32_t iSize, con
       logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "found DT-DL {} package with dts: {:.3f}, poc: {} in list",
         packet.isELPackage ? "BL" : "EL", dts/DVD_TIME_BASE, backup_poc);
 
-      // Use DTS for primary pairing with jitter tolerance, and POC as secondary check
-      // This prioritizes DTS matching to reduce computational overhead from POC parsing
-      bool dts_match = (abs(packet.dts - dts) <= DVD_TIME_BASE / 10); // Allow 100ms jitter for DTS
-      bool poc_match = (current_poc == -1 || backup_poc == -1 || abs(current_poc - backup_poc) <= 1);
-      
-      if (!dts_match && !poc_match)
+      // POC as primary matching criteria (user selected POC priority)
+      // DTS as secondary validation (allow 500ms tolerance)
+      bool poc_match = (current_poc != -1 && backup_poc != -1 && abs(current_poc - backup_poc) <= 1);
+      bool dts_match = (abs(packet.dts - dts) <= DVD_TIME_BASE / 2); // 500ms
+
+      if (!poc_match && !dts_match)
       {
         logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "discarding DT-DL {} package with dts {:.3f} and poc {} as not matching package in list with dts: {:.3f} and poc: {}",
           packet.isELPackage ? "EL" : "BL", packet.dts/DVD_TIME_BASE, current_poc, dts/DVD_TIME_BASE, backup_poc);
 
         return false;
       }
-      else if (dts_match)
-      {
-        logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "matched DT-DL {} package using DTS: {:.3f}",
-          packet.isELPackage ? "EL" : "BL", packet.dts/DVD_TIME_BASE);
-      }
       else if (poc_match)
       {
         logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "matched DT-DL {} package using POC: {}",
           packet.isELPackage ? "EL" : "BL", current_poc);
+      }
+      else if (dts_match)
+      {
+        logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "matched DT-DL {} package using DTS: {:.3f}",
+          packet.isELPackage ? "EL" : "BL", packet.dts/DVD_TIME_BASE);
       }
 
       if (packet.isELPackage)
