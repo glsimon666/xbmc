@@ -1097,6 +1097,25 @@ int CBitstreamConverter::ExtractPOC(const uint8_t* buf, int size)
   return poc_lsb;
 }
 
+// Compute full POC from POC LSB by tracking MSB cycles
+int CBitstreamConverter::ComputeFullPOC(int poc_lsb)
+{
+  if (poc_lsb < 0)
+    return -1;
+
+  int log2_max_poc_lsb = m_log2_max_pic_order_cnt_lsb_minus4 + 4;
+  int max_cycle = 1 << log2_max_poc_lsb; // 2^log2_max_poc_lsb
+
+  // Detect POC LSB wrap-around
+  if (m_prev_poc_lsb >= 0 && poc_lsb < m_prev_poc_lsb)
+  {
+    m_poc_msb_cycle += max_cycle;
+  }
+
+  m_prev_poc_lsb = poc_lsb;
+  return m_poc_msb_cycle + poc_lsb;
+}
+
 void CBitstreamConverter::ApplyMasteringDisplayColourVolume(const MasteringDisplayColourVolume& metadata, bool& update) {
 
   if ((m_hdrStaticMetadataInfo.max_lum != metadata.maxLuminance) ||

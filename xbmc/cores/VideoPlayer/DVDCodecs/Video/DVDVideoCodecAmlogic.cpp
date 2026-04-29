@@ -523,10 +523,15 @@ bool CDVDVideoCodecAmlogic::DualLayerConvert(uint8_t *pData, uint32_t iSize, con
 {
   bool dual_layer_converted = false;
 
-  // Extract POC from current packet
+  // Extract POC from current packet and compute full POC
+  int current_poc_lsb = -1;
   int current_poc = -1;
   if (m_bitstream && iSize > 0)
-    current_poc = m_bitstream->ExtractPOC(pData, iSize);
+  {
+    current_poc_lsb = m_bitstream->ExtractPOC(pData, iSize);
+    if (current_poc_lsb != -1)
+      current_poc = m_bitstream->ComputeFullPOC(current_poc_lsb);
+  }
 
   logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "DT-DL {} package with dts: {:.3f}, pts: {:.3f}, poc: {} and size {} arrived, list {} empty",
     packet.isELPackage ? "EL" : "BL", packet.dts/DVD_TIME_BASE, packet.pts/DVD_TIME_BASE, current_poc, iSize, m_packages.empty() ? "is" : "is not");
@@ -534,41 +539,57 @@ bool CDVDVideoCodecAmlogic::DualLayerConvert(uint8_t *pData, uint32_t iSize, con
   if (!m_packages.empty())
   {
     // convert bl and el package to single package
-    DLDemuxPacket dual_layer_packet = m_packages.front();
-    auto const& [pDataBackup, iSizeBackup, isELPackageBackup, dts, backup_poc] = dual_layer_packet;
-
-    if (isELPackageBackup != packet.isELPackage)
+    // Convert BL and EL packages in queue
+    // Iterate through queue to find matching packet (not just front)
+    for (auto it = m_packages.begin(); it != m_packages.end(); ++it)
     {
-      logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "found DT-DL {} package with dts: {:.3f}, poc: {} in list",
-        packet.isELPackage ? "BL" : "EL", dts/DVD_TIME_BASE, backup_poc);
+      DLDemuxPacket& dual_layer_packet = *it;
+      auto const& [pDataBackup, iSizeBackup, isELPackageBackup, dts, ptsBackup, backup_poc] = dual_layer_packet;
 
-      // POC as primary matching criteria (user selected POC priority)
-      // DTS as secondary validation (allow 500ms tolerance)
-      bool poc_match = (current_poc != -1 && backup_poc != -1 && abs(current_poc - backup_poc) <= 1);
-      bool dts_match = (abs(packet.dts - dts) <= DVD_TIME_BASE / 2); // 500ms
-
-      if (!poc_match && !dts_match)
+      if (isELPackageBackup != packet.isELPackage)
       {
-        logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "discarding DT-DL {} package with dts {:.3f} and poc {} as not matching package in list with dts: {:.3f} and poc: {}",
-          packet.isELPackage ? "EL" : "BL", packet.dts/DVD_TIME_BASE, current_poc, dts/DVD_TIME_BASE, backup_poc);
+        logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "found DT-DL {} package with dts: {:.3f}, pts: {:.3f}, poc: {} in list",
+          packet.isELPackage ? "BL" : "EL", dts/DVD_TIME_BASE, ptsBackup/DVD_TIME_BASE, backup_poc);
 
-        return false;
-      }
-      else if (poc_match)
-      {
-        logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "matched DT-DL {} package using POC: {}",
-          packet.isELPackage ? "EL" : "BL", current_poc);
-      }
-      else if (dts_match)
-      {
-        logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "matched DT-DL {} package using DTS: {:.3f}",
-          packet.isELPackage ? "EL" : "BL", packet.dts/DVD_TIME_BASE);
-      }
+        // PTS as primary matching criteria (1 frame tolerance for 24fps)
+        // POC as fallback (complete POC match)
+        bool pts_match = false;
+        if (packet.pts != DVD_NOPTS_VALUE && ptsBackup != DVD_NOPTS_VALUE)
+        {
+          double pts_diff = std::abs(packet.pts - ptsBackup);
+          // 1 frame tolerance for 24fps: DVD_TIME_BASE / 24 ≈ 41666 us
+          pts_match = (pts_diff <= DVD_TIME_BASE / 24);
+        }
+        
+        bool poc_match = (current_poc != -1 && backup_poc != -1 && current_poc == backup_poc);
 
-      if (packet.isELPackage)
-        dual_layer_converted = m_bitstream->Convert(pDataBackup, iSizeBackup, pData, iSize, packet.pts);
-      else
-        dual_layer_converted = m_bitstream->Convert(pData, iSize, pDataBackup, iSizeBackup, packet.pts);
+        if (!pts_match && !poc_match)
+          continue; // Try next packet in queue
+
+        if (pts_match)
+        {
+          logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "matched DT-DL {} package using PTS: {:.3f}",
+            packet.isELPackage ? "EL" : "BL", packet.pts/DVD_TIME_BASE);
+        }
+        else if (poc_match)
+        {
+          logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "matched DT-DL {} package using POC: {}",
+            packet.isELPackage ? "EL" : "BL", current_poc);
+        }
+
+        if (packet.isELPackage)
+          dual_layer_converted = m_bitstream->Convert(pDataBackup, iSizeBackup, pData, iSize, packet.pts);
+        else
+          dual_layer_converted = m_bitstream->Convert(pData, iSize, pDataBackup, iSizeBackup, packet.pts);
+
+        if (dual_layer_converted)
+        {
+          // Remove matched packet from queue
+          KODI::MEMORY::AlignedFree(pDataBackup);
+          m_packages.erase(it);
+          break;
+        }
+      }
     }
   }
 
@@ -581,11 +602,11 @@ bool CDVDVideoCodecAmlogic::DualLayerConvert(uint8_t *pData, uint32_t iSize, con
     auto it = m_packages.begin();
     while (it != m_packages.end())
     {
-      auto const& [pDataBackup, iSizeBackup, isELPackageBackup, dts, backup_poc] = *it;
+      auto const& [pDataBackup, iSizeBackup, isELPackageBackup, dts, ptsBackup, backup_poc] = *it;
       if (current_time - dts > max_age)
       {
-        logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "cleaning up orphan DT-DL {} package with dts: {:.3f}, poc: {}",
-          isELPackageBackup ? "EL" : "BL", dts/DVD_TIME_BASE, backup_poc);
+        logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "cleaning up orphan DT-DL {} package with dts: {:.3f}, pts: {:.3f}, poc: {}",
+          isELPackageBackup ? "EL" : "BL", dts/DVD_TIME_BASE, ptsBackup/DVD_TIME_BASE, backup_poc);
         KODI::MEMORY::AlignedFree(std::get<0>(*it));
         it = m_packages.erase(it);
       }
@@ -600,9 +621,9 @@ bool CDVDVideoCodecAmlogic::DualLayerConvert(uint8_t *pData, uint32_t iSize, con
     while (m_packages.size() >= max_queue_size)
     {
       auto& oldest_packet = m_packages.front();
-      auto const& [pDataBackup, iSizeBackup, isELPackageBackup, dts, backup_poc] = oldest_packet;
-      logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "cleaning up old DT-DL {} package with dts: {:.3f}, poc: {} due to queue size limit",
-        isELPackageBackup ? "EL" : "BL", dts/DVD_TIME_BASE, backup_poc);
+      auto const& [pDataBackup, iSizeBackup, isELPackageBackup, dts, ptsBackup, backup_poc] = oldest_packet;
+      logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "cleaning up old DT-DL {} package with dts: {:.3f}, pts: {:.3f}, poc: {} due to queue size limit",
+        isELPackageBackup ? "EL" : "BL", dts/DVD_TIME_BASE, ptsBackup/DVD_TIME_BASE, backup_poc);
       KODI::MEMORY::AlignedFree(std::get<0>(oldest_packet));
       m_packages.pop_front();
     }
@@ -610,7 +631,7 @@ bool CDVDVideoCodecAmlogic::DualLayerConvert(uint8_t *pData, uint32_t iSize, con
     // Add current packet to queue
     auto pDataBackup = static_cast<uint8_t*>(KODI::MEMORY::AlignedMalloc(packet.iSize + AV_INPUT_BUFFER_PADDING_SIZE, 16));
     memcpy(pDataBackup, packet.pData, packet.iSize);
-    m_packages.emplace_back(pDataBackup, iSize, packet.isELPackage, packet.dts, current_poc);
+    m_packages.emplace_back(pDataBackup, iSize, packet.isELPackage, packet.dts, packet.pts, current_poc);
 
     logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "did add DT-DL {} package with dts: {:.3f}, pts: {:.3f}, poc: {} and size {} in list, queue size: {}",
       packet.isELPackage ? "EL" : "BL", packet.dts/DVD_TIME_BASE, packet.pts/DVD_TIME_BASE, current_poc, packet.iSize, m_packages.size());
@@ -621,10 +642,6 @@ bool CDVDVideoCodecAmlogic::DualLayerConvert(uint8_t *pData, uint32_t iSize, con
   {
     logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "converted DT-DL with dts: {:.3f}, pts: {:.3f}, poc: {}",
       packet.dts/DVD_TIME_BASE, packet.pts/DVD_TIME_BASE, current_poc);
-
-    // All good can remove the backed up package
-    KODI::MEMORY::AlignedFree(std::get<0>(m_packages.front()));
-    m_packages.pop_front();
 
     if (!m_bitstream->CanStartDecode())
     {
@@ -744,6 +761,8 @@ void CDVDVideoCodecAmlogic::Reset(void)
   m_has_keyframe = false;
   if (m_bitstream && m_hints.codec == AV_CODEC_ID_H264)
     m_bitstream->ResetStartDecode();
+  if (m_bitstream)
+    m_bitstream->ResetPOCState();
 }
 
 CDVDVideoCodec::VCReturn CDVDVideoCodecAmlogic::GetPicture(VideoPicture* pVideoPicture)

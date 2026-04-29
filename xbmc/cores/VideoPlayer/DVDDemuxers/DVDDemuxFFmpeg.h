@@ -181,5 +181,10 @@ protected:
   double m_startTime = 0;
   bool m_dv_dual_stream = false;
   bool m_dv_dual_stream_started = false;
+  
+  // PTS timeline maintenance for seamless BD clip transitions
+  double m_lastPts{DVD_NOPTS_VALUE}; // Last valid PTS output
+  double m_ptsOffset{0};         // Accumulated offset for clip transitions
+  double m_frameDuration{0};     // Frame duration from stream info
 };
 

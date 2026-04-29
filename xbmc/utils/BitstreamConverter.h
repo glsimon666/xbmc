@@ -149,6 +149,8 @@ public:
   void SetRemoveHdr10Plus(bool value) { m_removeHdr10Plus = value; }
 
   int ExtractPOC(const uint8_t* buf, int size);
+  int ComputeFullPOC(int poc_lsb);
+  void ResetPOCState() { m_poc_msb_cycle = 0; m_prev_poc_lsb = -1; }
 
   static bool mpeg2_sequence_header(const uint8_t* data,
                                     const uint32_t size,
@@ -214,6 +216,8 @@ protected:
   uint32_t m_sps_pps_size;
   omx_bitstream_ctx m_sps_pps_context;
   int m_log2_max_pic_order_cnt_lsb_minus4{4};
+  int m_poc_msb_cycle{0};      // POC MSB cycle counter for full POC calculation
+  int m_prev_poc_lsb{-1};      // Previous POC LSB for detecting wrap-around
   bool m_convert_bitstream;
   bool m_to_annexb;
   bool m_combine;
