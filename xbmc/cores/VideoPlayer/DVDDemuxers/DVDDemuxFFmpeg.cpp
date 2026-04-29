@@ -246,7 +246,7 @@ bool CDVDDemuxFFmpeg::Open(const std::shared_ptr<CDVDInputStream>& pInput, bool 
   std::string strFile;
   m_streaminfo = streaminfo;
   m_currentPts = DVD_NOPTS_VALUE;
-  m_lastPts = DVD_NOPTS_VALUE;
+  m_streamLastPts.clear();
   m_ptsOffset = 0;
   m_frameDuration = 0;
   m_speed = DVD_PLAYSPEED_NORMAL;
@@ -1146,29 +1146,43 @@ DemuxPacket* CDVDDemuxFFmpeg::ReadInternal(bool keep)
             m_currentPts = pPacket->pts;
 
           // PTS timeline maintenance for seamless BD clip transitions
-          // Detect PTS jump (new clip usually resets PTS to ~0)
-          if (pPacket->pts != DVD_NOPTS_VALUE && m_lastPts != DVD_NOPTS_VALUE && m_frameDuration > 0)
+          // Per-stream PTS tracking: BL and EL are independent streams,
+          // each with its own PTS timeline that resets at clip boundaries
+          if (pPacket->pts != DVD_NOPTS_VALUE && m_frameDuration > 0)
           {
-            // If PTS jumps backward more than 1 second, it's a clip transition
-            const double jumpThreshold = DVD_TIME_BASE; // 1 second threshold
-            double ptsDiff = pPacket->pts - m_lastPts;
-            
-            if (ptsDiff < -jumpThreshold)
+            int streamIdx = m_pkt.pkt.stream_index;
+            auto it = m_streamLastPts.find(streamIdx);
+
+            if (it == m_streamLastPts.end())
             {
-              // Calculate offset to maintain timeline continuity
-              // Add one frame duration to ensure we don't overlap
-              double offset = m_lastPts - pPacket->pts + m_frameDuration;
-              m_ptsOffset += offset;
-              CLog::Log(LOGDEBUG, "CDVDDemuxFFmpeg::ReadInternal - PTS jump detected: {:.3f}s -> {:.3f}s, adding offset {:.3f}s",
-                        m_lastPts / DVD_TIME_BASE, pPacket->pts / DVD_TIME_BASE, m_ptsOffset / DVD_TIME_BASE);
+              // First packet for this stream, apply current offset and initialize
+              pPacket->pts += m_ptsOffset;
+              if (pPacket->dts != DVD_NOPTS_VALUE)
+                pPacket->dts += m_ptsOffset;
+              m_streamLastPts[streamIdx] = pPacket->pts;
             }
-            
-            // Apply accumulated offset
-            pPacket->pts += m_ptsOffset;
-            if (pPacket->dts != DVD_NOPTS_VALUE)
-              pPacket->dts += m_ptsOffset;
-            
-            m_lastPts = pPacket->pts;
+            else
+            {
+              double& lastPts = it->second;
+              double expectedPts = pPacket->pts + m_ptsOffset;
+              const double jumpThreshold = DVD_TIME_BASE; // 1 second threshold
+
+              if (expectedPts < lastPts - jumpThreshold)
+              {
+                // PTS jump detected: new clip, accumulate offset
+                double offset = lastPts - pPacket->pts + m_frameDuration;
+                m_ptsOffset += offset;
+                expectedPts = pPacket->pts + m_ptsOffset;
+                CLog::Log(LOGDEBUG, "CDVDDemuxFFmpeg::ReadInternal - PTS jump stream={}: {:.3f}s -> {:.3f}s, offset {:.3f}s",
+                          streamIdx, lastPts / DVD_TIME_BASE, expectedPts / DVD_TIME_BASE, m_ptsOffset / DVD_TIME_BASE);
+              }
+
+              pPacket->pts = expectedPts;
+              if (pPacket->dts != DVD_NOPTS_VALUE)
+                pPacket->dts += m_ptsOffset;
+
+              lastPts = pPacket->pts;
+            }
           }
 
           // store internal id until we know the continuous id presented to player
@@ -1296,7 +1310,7 @@ bool CDVDDemuxFFmpeg::SeekTime(double time, bool backwards, double* startpts)
 
     Flush();
 
-    m_lastPts = DVD_NOPTS_VALUE;
+    m_streamLastPts.clear();
     m_ptsOffset = 0;
 
     return true;
@@ -1382,7 +1396,7 @@ bool CDVDDemuxFFmpeg::SeekTime(double time, bool backwards, double* startpts)
       if (!(m_pFormatContext->iformat->flags & AVFMT_NOTIMESTAMPS))
         m_seekToKeyFrame = true;
       m_currentPts = DVD_NOPTS_VALUE;
-      m_lastPts = DVD_NOPTS_VALUE;
+      m_streamLastPts.clear();
       m_ptsOffset = 0;
     }
   }

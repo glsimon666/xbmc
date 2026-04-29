@@ -183,8 +183,8 @@ protected:
   bool m_dv_dual_stream_started = false;
   
   // PTS timeline maintenance for seamless BD clip transitions
-  double m_lastPts{DVD_NOPTS_VALUE}; // Last valid PTS output
-  double m_ptsOffset{0};         // Accumulated offset for clip transitions
-  double m_frameDuration{0};     // Frame duration from stream info
+  std::map<int, double> m_streamLastPts; // Per-stream last valid PTS (key=stream_index)
+  double m_ptsOffset{0};                 // Accumulated clip transition offset (shared)
+  double m_frameDuration{0};             // Frame duration from stream info
 };
 
