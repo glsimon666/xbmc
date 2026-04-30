@@ -11,6 +11,7 @@
 #include "BlurayStateSerializer.h"
 #include "DVDInputStream.h"
 
+#include <atomic>
 #include <list>
 #include <memory>
 #include <queue>
@@ -43,6 +44,7 @@ extern "C"
 #define HDMV_PID_IG_LAST          0x141f
 
 class CDVDOverlayImage;
+class CBlurayIsoCache;
 class IVideoPlayer;
 class CDVDDemux;
 
@@ -213,8 +215,12 @@ protected:
 
   private:
     bool OpenStream(CFileItem &item);
+    int ReadBlocksDirect(uint8_t* buf, int lba, int num_blocks);
+    int64_t ReadRaw(uint64_t offset, uint8_t* buffer, size_t size);
     void SetupPlayerSettings() const;
     void FreeTitleInfo();
+    std::atomic<unsigned int> m_isoCacheFallbacks{0};
+    std::unique_ptr<CBlurayIsoCache> m_isoCache;
     std::unique_ptr<CDVDInputStreamFile> m_pstream;
     std::string m_rootPath;
 
