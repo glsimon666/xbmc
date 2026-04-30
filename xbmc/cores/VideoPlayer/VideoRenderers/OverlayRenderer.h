@@ -183,11 +183,7 @@ namespace OVERLAY {
      */
     void LoadSettings();
 
-    enum PositonResInfoState
-    {
-      POSRESINFO_UNSET = -1,
-      POSRESINFO_SAVE_CHANGES = -2,
-    };
+    int m_subtitleViewHeight{0}; // track view height to detect resolution changes
 
     CCriticalSection m_section;
     std::vector<SElement> m_buffers[NUM_BUFFERS];
@@ -201,11 +197,7 @@ namespace OVERLAY {
     std::string m_stereomode;
     // Current subtitle position
     int m_subtitlePosition{0};
-    // Current subtitle position from resolution info,
-    // or PositonResInfoState enum values for deferred processing
-    int m_subtitlePosResInfo{POSRESINFO_UNSET};
     int m_subtitleVerticalMargin{0};
-    bool m_saveSubtitlePosition{false}; // To save subtitle position permanently
     KODI::SUBTITLES::HorizontalAlign m_subtitleHorizontalAlign{
         KODI::SUBTITLES::HorizontalAlign::CENTER};
     KODI::SUBTITLES::Align m_subtitleAlign{KODI::SUBTITLES::Align::BOTTOM_OUTSIDE};

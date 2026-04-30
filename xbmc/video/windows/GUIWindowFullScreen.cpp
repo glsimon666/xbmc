@@ -29,6 +29,7 @@
 #include "video/ViewModeSettings.h"
 #include "video/dialogs/GUIDialogFullScreenInfo.h"
 #include "video/dialogs/GUIDialogSubtitleSettings.h"
+#include "video/PlayerController.h"
 #include "windowing/WinSystem.h"
 
 #include <algorithm>
@@ -173,16 +174,14 @@ bool CGUIWindowFullScreen::OnAction(const CAction &action)
     {
       if (appPlayer->IsInMenu())
         break;
-      m_subtitleDynamicOffset -= 1.0f;
-      appPlayer->SetDynamicSubtitleOffset(m_subtitleDynamicOffset);
+      CPlayerController::GetInstance().OnAction(CAction(ACTION_SUBTITLE_VSHIFT_UP));
       return true;
     }
   case ACTION_MOVE_DOWN:
     {
       if (appPlayer->IsInMenu())
         break;
-      m_subtitleDynamicOffset += 1.0f;
-      appPlayer->SetDynamicSubtitleOffset(m_subtitleDynamicOffset);
+      CPlayerController::GetInstance().OnAction(CAction(ACTION_SUBTITLE_VSHIFT_DOWN));
       return true;
     }
   default:
@@ -226,7 +225,6 @@ bool CGUIWindowFullScreen::OnMessage(CGUIMessage& message)
       GUIINFO::CPlayerGUIInfo& guiInfo = CServiceBroker::GetGUI()->GetInfoManager().GetInfoProviders().GetPlayerInfoProvider();
       guiInfo.SetShowInfo(false);
       m_bShowCurrentTime = false;
-      m_subtitleDynamicOffset = 0.0f;
 
       // switch resolution
       CServiceBroker::GetWinSystem()->GetGfxContext().SetFullScreenVideo(true);
