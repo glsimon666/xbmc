@@ -676,7 +676,7 @@
         </setting>
         <setting id="subtitles.localmovement" type="boolean" label="39202" help="39203">
           <level>2</level>
-          <default>false</default>
+          <default>true</default>
           <control type="toggle" />
         </setting>
         <setting id="subtitles.positionpercentage" parent="subtitles.localmovement" type="integer" label="39204" help="39205">
