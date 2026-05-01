@@ -1681,41 +1681,72 @@ CDemuxStream* CDVDDemuxFFmpeg::AddStream(int streamIdx)
         st->iFpsRate  = 0;
         st->iFpsScale = 0;
 
-        if (pStream->avg_frame_rate.den && pStream->avg_frame_rate.num)
+        auto fpsFromRational = [](const AVRational& rate) -> double {
+          if (rate.den > 0 && rate.num > 0)
+            return static_cast<double>(rate.num) / static_cast<double>(rate.den);
+          return 0.0;
+        };
+
+        auto isValidFrameRate = [](double f) -> bool {
+          return f >= 1.0 && f <= 120.0;
+        };
+
+        double avgFps = fpsFromRational(pStream->avg_frame_rate);
+        double realFps = fpsFromRational(r_frame_rate);
+
+        // Tier 1: avg_frame_rate if valid and not a clock rate (90000/1001 etc.)
+        if (isValidFrameRate(avgFps) && avgFps < 500.0)
         {
-          double fps = (double) pStream->avg_frame_rate.num / (double) pStream->avg_frame_rate.den;
-          if (fps > 500. && r_frame_rate.num > 0 && r_frame_rate.den > 0) {
-            // fps seems to be nonsense so we're use real base framerate instead
-            st->iFpsRate = r_frame_rate.num;
-            st->iFpsScale = r_frame_rate.den;
-          } else {
-            st->iFpsRate = pStream->avg_frame_rate.num;
-            st->iFpsScale = pStream->avg_frame_rate.den;
-          }
+          st->iFpsRate = pStream->avg_frame_rate.num;
+          st->iFpsScale = pStream->avg_frame_rate.den;
         }
-        else if (r_frame_rate.den && r_frame_rate.num)
+        // Tier 2: r_frame_rate (real base framerate) fallback
+        else if (isValidFrameRate(realFps))
         {
-          st->iFpsRate  = r_frame_rate.num;
+          st->iFpsRate = r_frame_rate.num;
           st->iFpsScale = r_frame_rate.den;
         }
-        if (st->iFpsScale)
-          fps = static_cast<float>(st->iFpsRate) / static_cast<float>(st->iFpsScale);
-
-        if (fps > 24.5f && pStream->time_base.num && pStream->time_base.den &&
-            pStream->codecpar->field_order != AV_FIELD_PROGRESSIVE && pStream->codecpar->field_order != AV_FIELD_UNKNOWN)
+        // Tier 3: infer from time_base if it looks like a frame duration
+        else if (pStream->time_base.den > 0 && pStream->time_base.num > 0)
         {
-          float tb_rate = static_cast<float>(pStream->time_base.den) / static_cast<float>(pStream->time_base.num);
-          if (tb_rate > 45.0f && tb_rate < 65.0f)
+          double tbRate = static_cast<double>(pStream->time_base.den) /
+                          static_cast<double>(pStream->time_base.num);
+          if (isValidFrameRate(tbRate))
           {
-            // Only 45-65Hz looks like field rate (e.g. 1/50, 1/60)
-            st->iFpsRate  = pStream->time_base.den;
+            st->iFpsRate = pStream->time_base.den;
             st->iFpsScale = pStream->time_base.num;
           }
-          // Otherwise (time_base is not field rate): keep existing fps, no doubling
-
-          st->bInterlaced = true;
         }
-        else if (r_frame_rate.den && r_frame_rate.num && std::abs(static_cast<float>(r_frame_rate.num) / static_cast<float>(r_frame_rate.den) - 2.0f * fps) < 0.01f)
+
+        if (st->iFpsScale)
+          fps = static_cast<float>(st->iFpsRate) / static_cast<float>(st->iFpsScale);
+        else
+          st->bUnknownIP = true;
+
+        // Interlaced detection based on field_order + time_base
+        bool fieldOrderInterlaced = pStream->codecpar->field_order != AV_FIELD_PROGRESSIVE &&
+                                     pStream->codecpar->field_order != AV_FIELD_UNKNOWN;
+
+        if (st->iFpsScale && fieldOrderInterlaced &&
+            pStream->time_base.num > 0 && pStream->time_base.den > 0)
+        {
+          float tbRate = static_cast<float>(pStream->time_base.den) /
+                         static_cast<float>(pStream->time_base.num);
+          float ratio = (fps > 0) ? tbRate / fps : 0.0f;
+          if (ratio > 1.8f && ratio < 3.2f)
+          {
+            st->iFpsRate  = pStream->time_base.den;
+            st->iFpsScale = pStream->time_base.num;
+            st->bInterlaced = true;
+          }
+          else
+          {
+            st->bInterlaced = true;
+          }
+        }
+        // Interlaced detection: r_frame_rate is ~2x the frame rate
+        else if (st->iFpsScale && realFps > 0 &&
+                 std::abs(realFps - 2.0 * fps) < 0.01)
         {
           st->iFpsRate  = r_frame_rate.num;
           st->iFpsScale = r_frame_rate.den;
