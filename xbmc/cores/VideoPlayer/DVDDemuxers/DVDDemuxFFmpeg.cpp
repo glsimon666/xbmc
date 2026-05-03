@@ -1746,7 +1746,7 @@ CDemuxStream* CDVDDemuxFFmpeg::AddStream(int streamIdx)
         }
         // Interlaced detection: r_frame_rate is ~2x the frame rate
         else if (st->iFpsScale && realFps > 0 &&
-                 std::abs(realFps - 2.0 * fps) < 0.01)
+                 std::fabs(realFps - 2.0 * static_cast<double>(fps)) < 0.01)
         {
           st->iFpsRate  = r_frame_rate.num;
           st->iFpsScale = r_frame_rate.den;
