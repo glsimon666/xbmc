@@ -537,18 +537,23 @@ bool CDVDVideoCodecAmlogic::DualLayerConvert(uint8_t *pData, uint32_t iSize, con
       logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "found DT-DL {} package with dts: {:.3f} in list",
         packet.isELPackage ? "BL" : "EL", dts/DVD_TIME_BASE);
 
-      if (packet.dts < dts) // prior dts arrived - out of step - remove and attempt next.
+      if (std::fabs(packet.dts - dts) > DVD_TIME_BASE * 0.5) // 500ms tolerance
       {
-        logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic", "discarding DT-DL {} package with dts {:.3f} as before package in list with dts: {:.3f}",
-          packet.isELPackage ? "EL" : "BL", packet.dts/DVD_TIME_BASE, dts/DVD_TIME_BASE);
+        logComponentM(LOGDEBUG, LOGVIDEO, "CDVDVideoCodecAmlogic",
+          "discarding stale DT-DL {} package in list with dts {:.3f} (too far from {} package dts {:.3f})",
+          isELPackageBackup ? "EL" : "BL", dts / DVD_TIME_BASE,
+          packet.isELPackage ? "EL" : "BL", packet.dts / DVD_TIME_BASE);
 
-        return false;
+        KODI::MEMORY::AlignedFree(pDataBackup);
+        m_packages.pop_front();
       }
-
-      if (packet.isELPackage)
-        dual_layer_converted = m_bitstream->Convert(pDataBackup, iSizeBackup, pData, iSize, packet.pts);
       else
-        dual_layer_converted = m_bitstream->Convert(pData, iSize, pDataBackup, iSizeBackup, packet.pts);
+      {
+        if (packet.isELPackage)
+          dual_layer_converted = m_bitstream->Convert(pDataBackup, iSizeBackup, pData, iSize, packet.pts);
+        else
+          dual_layer_converted = m_bitstream->Convert(pData, iSize, pDataBackup, iSizeBackup, packet.pts);
+      }
     }
   }
 
