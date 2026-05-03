@@ -41,6 +41,7 @@
 #include "utils/StringUtils.h"
 #include "utils/SystemInfo.h"
 #include "utils/TimeUtils.h"
+#include "cores/DataCacheCore.h"
 #include "windowing/WinSystem.h"
 #include "windows/GUIMediaWindow.h"
 
@@ -234,8 +235,13 @@ bool CSystemGUIInfo::GetLabel(std::string& value, const CFileItem *item, int con
           "{}", CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo().iScreenHeight);
       return true;
     case SYSTEM_FPS:
-      value = StringUtils::Format("{:02.2f}", m_fps);
+    {
+      float fps = m_fps;
+      if (CServiceBroker::GetDataCacheCore().IsVideoInterlaced())
+        fps = m_fps / 2.0f;
+      value = StringUtils::Format("{:02.2f}", fps);
       return true;
+    }
 #ifdef HAS_OPTICAL_DRIVE
     case SYSTEM_DVD_LABEL:
       value = CServiceBroker::GetMediaManager().GetDiskLabel();

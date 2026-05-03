@@ -1701,6 +1701,16 @@ FormattedFpsInfo format_fps_info() {
 
   FpsInfo info = gather_fps_data();
 
+  // For interlaced content: kernel reports field rate,
+  // Kodi shows frame rate. Halve AML values to match.
+  if (CServiceBroker::GetDataCacheCore().IsVideoInterlaced() &&
+      info.avg_input_fps > 0)
+  {
+    info.avg_input_fps = (info.avg_input_fps + 1) / 2;
+    info.avg_output_fps = (info.avg_output_fps + 1) / 2;
+    info.avg_drop_fps = info.avg_input_fps - info.avg_output_fps;
+  }
+
   // Format basic info
   static int rotation_index = 0;
   const char rotation_chars[] = {'|', '/', '-', '\\'};

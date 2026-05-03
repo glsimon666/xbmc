@@ -1707,10 +1707,27 @@ bool CAMLCodec::OpenDecoder(bool restart)
 
   // check for 1920x1080, interlaced, 25 fps
   // incorrectly reported as 50 fps (yes, video_rate == 1920)
-  if (hints.width == 1920 && am_private->video_rate == 1920)
+  if (hints.width == 1920 && am_private->video_rate == 1920 &&
+      (hints.codecOptions & CODEC_INTERLACED))
   {
-    CLog::Log(LOGDEBUG, "CAMLCodec::OpenDecoder video_rate exception");
-    am_private->video_rate = 0.5f + (float)UNIT_FREQ * 1001 / 25000;
+    CLog::Log(LOGDEBUG, "CAMLCodec::OpenDecoder video_rate exception - field rate corrected to frame rate");
+    am_private->video_rate *= 2;
+  }
+
+  // For VC1/WMV3 interlaced: kernel halves video_rate for field output
+  // (vf->duration = rate >> 1), so userspace must provide FRAME duration.
+  // Demuxer reports field rate (e.g. 60000/1001 for 29.97fps), resulting
+  // in video_rate ~1602 instead of the required ~3203.
+  if ((hints.codec == AV_CODEC_ID_VC1 || hints.codec == AV_CODEC_ID_WMV3) &&
+      (hints.codecOptions & CODEC_INTERLACED))
+  {
+    // video_rate < 2100 ≈ fps > 45.7Hz → field rate, not frame rate
+    if (am_private->video_rate < 2100)
+    {
+      CLog::Log(LOGDEBUG, "CAMLCodec::OpenDecoder VC1/WMV3 interlaced video_rate corrected {} -> {}",
+                am_private->video_rate, am_private->video_rate * 2);
+      am_private->video_rate *= 2;
+    }
   }
 
   // check for SD h264 content incorrectly reported as 60 fsp
@@ -2441,16 +2458,15 @@ CDVDVideoCodec::VCReturn CAMLCodec::GetPicture(VideoPicture& videoPicture)
     const double rate_duration = static_cast<double>(am_private->video_rate * DVD_TIME_BASE) / UNIT_FREQ;
     const double picture_duration = static_cast<double>(m_cur_pts - m_last_pts);
     const double duration_ratio = picture_duration / rate_duration;
-    const bool is_sel_25hz_interlaced = (((m_hints.codec == AV_CODEC_ID_VC1) ||
-                                          (m_hints.codec == AV_CODEC_ID_WMV3) ||
-                                          (m_hints.codec == AV_CODEC_ID_H264)) &&
-                                         (m_processInfo.GetVideoFps() == 25.0f) &&
-                                         m_processInfo.GetVideoInterlaced());
+    const bool is_interlaced_codec = ((m_hints.codec == AV_CODEC_ID_VC1) ||
+                                      (m_hints.codec == AV_CODEC_ID_WMV3) ||
+                                      (m_hints.codec == AV_CODEC_ID_H264)) &&
+                                     m_processInfo.GetVideoInterlaced();
 
     if (m_last_pts == DVD_NOPTS_VALUE)
       videoPicture.iDuration = rate_duration;
     else if ((m_speed == DVD_PLAYSPEED_NORMAL) &&
-             !is_sel_25hz_interlaced &&             
+             !is_interlaced_codec &&             
              (m_cur_pts < m_last_pts))
     {
       m_cur_pts = m_last_pts + rate_duration;
