@@ -1707,7 +1707,8 @@ bool CAMLCodec::OpenDecoder(bool restart)
 
   // check for 1920x1080, interlaced, 25 fps
   // incorrectly reported as 50 fps (yes, video_rate == 1920)
-  if (hints.width == 1920 && am_private->video_rate == 1920 &&
+  if ((hints.codec == AV_CODEC_ID_VC1 || hints.codec == AV_CODEC_ID_WMV3) &&
+      hints.width == 1920 && am_private->video_rate == 1920 &&
       (hints.codecOptions & CODEC_INTERLACED))
   {
     CLog::Log(LOGDEBUG, "CAMLCodec::OpenDecoder video_rate exception - field rate corrected to frame rate");
@@ -1716,13 +1717,14 @@ bool CAMLCodec::OpenDecoder(bool restart)
 
   // For VC1/WMV3 interlaced: kernel halves video_rate for field output
   // (vf->duration = rate >> 1), so userspace must provide FRAME duration.
-  // Demuxer reports field rate (e.g. 60000/1001 for 29.97fps), resulting
-  // in video_rate ~1602 instead of the required ~3203.
+  // Use hint.interlaced (field_order scan type) for detection, consistent
+  // with VideoPlayerVideo::OpenStream logic.
+  // Ensure halved fps < 60: fps_after = 96000 / (video_rate/2) = 192000/video_rate < 60
+  // => video_rate > 3200
   if ((hints.codec == AV_CODEC_ID_VC1 || hints.codec == AV_CODEC_ID_WMV3) &&
-      (hints.codecOptions & CODEC_INTERLACED))
+      hints.interlaced)
   {
-    // video_rate < 2100 ≈ fps > 45.7Hz → field rate, not frame rate
-    if (am_private->video_rate < 2100)
+    while (am_private->video_rate <= 3200)
     {
       CLog::Log(LOGDEBUG, "CAMLCodec::OpenDecoder VC1/WMV3 interlaced video_rate corrected {} -> {}",
                 am_private->video_rate, am_private->video_rate * 2);
