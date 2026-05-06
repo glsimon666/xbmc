@@ -1701,14 +1701,34 @@ FormattedFpsInfo format_fps_info() {
 
   FpsInfo info = gather_fps_data();
 
-  // For interlaced content: kernel reports field rate,
-  // Kodi shows frame rate. Halve AML values to match.
+  float kodiFps = CServiceBroker::GetDataCacheCore().GetVideoFps();
+
   if (CServiceBroker::GetDataCacheCore().IsVideoInterlaced() &&
       info.avg_input_fps > 0)
   {
     info.avg_input_fps = (info.avg_input_fps + 1) / 2;
     info.avg_output_fps = (info.avg_output_fps + 1) / 2;
     info.avg_drop_fps = info.avg_input_fps - info.avg_output_fps;
+  }
+
+  if (info.avg_input_fps > 0 && kodiFps > 0)
+  {
+    while (info.avg_input_fps > kodiFps * 1.2f)
+    {
+      if (info.avg_input_fps / 2.0 < 20.0)
+        break;
+      info.avg_input_fps /= 2;
+      info.avg_output_fps = (info.avg_output_fps + 1) / 2;
+      info.avg_drop_fps = info.avg_input_fps - info.avg_output_fps;
+    }
+    while (info.avg_input_fps < kodiFps * 0.8f)
+    {
+      if (info.avg_input_fps * 2.0 > 120.0)
+        break;
+      info.avg_input_fps *= 2;
+      info.avg_output_fps *= 2;
+      info.avg_drop_fps = info.avg_input_fps - info.avg_output_fps;
+    }
   }
 
   // Format basic info

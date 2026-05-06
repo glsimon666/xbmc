@@ -217,9 +217,18 @@ void CVideoPlayerVideo::OpenStream(CDVDStreamInfo& hint, std::unique_ptr<CDVDVid
 
     // For VC-1/WMV3: demuxer may report field rate as fps
     // (50 for 25fps, 60000/1001 for 29.97fps). Show frame rate, not field rate.
-    if ((hint.codec == AV_CODEC_ID_VC1 || hint.codec == AV_CODEC_ID_WMV3) &&
-        m_fFrameRate > 30.0)
-      m_processInfo.SetVideoFps(static_cast<float>(m_fFrameRate) / 2.0f);
+    // Target range: 20-60fps. Special cases: 47.952fps and 59.94fps must be halved.
+    float adjustedFps = static_cast<float>(m_fFrameRate);
+    const bool isSpecialFps = (adjustedFps > 47.5 && adjustedFps < 48.5) ||
+                              (adjustedFps > 59.5 && adjustedFps < 60.5);
+    if (hint.codec == AV_CODEC_ID_VC1 || hint.codec == AV_CODEC_ID_WMV3)
+    {
+      while (adjustedFps > 60.0 || (isSpecialFps && adjustedFps / 2.0 >= 20.0))
+      {
+        adjustedFps /= 2.0f;
+      }
+      m_processInfo.SetVideoFps(adjustedFps);
+    }
   }
   else
   {
