@@ -213,12 +213,12 @@ void CVideoPlayerVideo::OpenStream(CDVDStreamInfo& hint, std::unique_ptr<CDVDVid
     // bInterlaced (→CODEC_INTERLACED→IsVideoInterlaced) is derived from
     // r_frame_rate patterns which can misidentify progressive content.
     if (hint.codec == AV_CODEC_ID_VC1 || hint.codec == AV_CODEC_ID_WMV3)
-      m_processInfo.SetVideoInterlaced(hint.interlaced);
+      m_processInfo.SetVideoInterlaced(true);
 
-    // For VC-1/WMV3 interlaced: demuxer may report field rate as fps
+    // For VC-1/WMV3: demuxer may report field rate as fps
     // (50 for 25fps, 60000/1001 for 29.97fps). Show frame rate, not field rate.
     if ((hint.codec == AV_CODEC_ID_VC1 || hint.codec == AV_CODEC_ID_WMV3) &&
-        hint.interlaced && m_fFrameRate > 30.0)
+        m_fFrameRate > 30.0)
       m_processInfo.SetVideoFps(static_cast<float>(m_fFrameRate) / 2.0f);
   }
   else
