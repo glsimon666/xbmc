@@ -3999,9 +3999,17 @@ bool CVideoPlayer::OpenVideoStream(CDVDStreamInfo& hint, bool reset)
       }
       else
       {
-        // For VC-1 videos, use original framerate without doubling
         framerate = static_cast<double>(hint.fpsrate) / hint.fpsscale;
         m_processInfo->SetVideoInterlaced(hint.interlaced);
+
+        float adjustedFps = static_cast<float>(framerate);
+        const bool isSpecialFps = (adjustedFps > 47.5 && adjustedFps < 48.5) ||
+                                  (adjustedFps > 59.5 && adjustedFps < 60.5);
+        while (adjustedFps > 60.0 || (isSpecialFps && adjustedFps / 2.0 >= 20.0))
+        {
+          adjustedFps /= 2.0f;
+        }
+        framerate = adjustedFps;
       }
       m_processInfo->SetVideoFps(static_cast<float>(framerate));
       m_renderManager.TriggerUpdateResolution(framerate, hint.width, hint.height, hint.stereo_mode);
