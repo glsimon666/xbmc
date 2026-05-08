@@ -1753,6 +1753,17 @@ CDemuxStream* CDVDDemuxFFmpeg::AddStream(int streamIdx)
           st->bInterlaced = true;
         }
 
+        if (pStream->codecpar->codec_id == AV_CODEC_ID_VC1 ||
+            pStream->codecpar->codec_id == AV_CODEC_ID_WMV3)
+        {
+          if (st->bInterlaced && st->iFpsScale && st->iFpsRate)
+          {
+            float fps = static_cast<float>(st->iFpsRate) / static_cast<float>(st->iFpsScale);
+            if (fps > 45.0f)
+              st->iFpsRate /= 2;
+          }
+        }
+
         CLog::Log(LOGDEBUG, "DVDDemuxFFmpeg::{} - fps:{:d}/{:d}{}", __FUNCTION__, st->iFpsRate, st->iFpsScale,
           st->bInterlaced ? "i" : "p");
 

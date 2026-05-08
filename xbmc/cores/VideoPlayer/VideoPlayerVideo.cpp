@@ -208,27 +208,6 @@ void CVideoPlayerVideo::OpenStream(CDVDStreamInfo& hint, std::unique_ptr<CDVDVid
 
     m_retryProgressive = 0;
     m_processInfo.SetVideoFps(static_cast<float>(m_fFrameRate));
-
-    // For VC-1/WMV3, trust field_order scan type over demuxer heuristics.
-    // bInterlaced (→CODEC_INTERLACED→IsVideoInterlaced) is derived from
-    // r_frame_rate patterns which can misidentify progressive content.
-    if (hint.codec == AV_CODEC_ID_VC1 || hint.codec == AV_CODEC_ID_WMV3)
-      m_processInfo.SetVideoInterlaced(true);
-
-    // For VC-1/WMV3: demuxer may report field rate as fps
-    // (50 for 25fps, 60000/1001 for 29.97fps). Show frame rate, not field rate.
-    // Target range: 20-60fps. Special cases: 47.952fps and 59.94fps must be halved.
-    float adjustedFps = static_cast<float>(m_fFrameRate);
-    const bool isSpecialFps = (adjustedFps > 47.5f && adjustedFps < 48.5f) ||
-                              (adjustedFps > 59.5f && adjustedFps < 60.5f);
-    if (hint.codec == AV_CODEC_ID_VC1 || hint.codec == AV_CODEC_ID_WMV3)
-    {
-      while (adjustedFps > 60.0f || (isSpecialFps && adjustedFps / 2.0f >= 20.0f))
-      {
-        adjustedFps /= 2.0f;
-      }
-      m_processInfo.SetVideoFps(adjustedFps);
-    }
   }
   else
   {
@@ -996,9 +975,10 @@ CVideoPlayerVideo::EOutputState CVideoPlayerVideo::OutputPicture(const VideoPict
 
   double config_framerate = m_bFpsInvalid ?
     static_cast<double>(CServiceBroker::GetWinSystem()->GetGfxContext().GetFPS()) :
-    m_fFrameRate;
+    static_cast<double>(m_processInfo.GetVideoFps());
 
-  if (m_processInfo.GetVideoInterlaced())
+  if (m_processInfo.GetVideoInterlaced() &&
+      m_hints.codec != AV_CODEC_ID_VC1 && m_hints.codec != AV_CODEC_ID_WMV3)
   {
     if (MathUtils::FloatEquals(static_cast<float>(config_framerate), 25.0f, 0.02f))
       config_framerate = 50.0;

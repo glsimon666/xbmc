@@ -1716,8 +1716,8 @@ bool CAMLCodec::OpenDecoder(bool restart)
 
   // For VC1/WMV3 interlaced: kernel halves video_rate for field output
   // (vf->duration = rate >> 1), so userspace must provide FRAME duration.
-  // Demuxer reports field rate (e.g. 60000/1001 for 29.97fps), resulting
-  // in video_rate ~1602 instead of the required ~3203.
+  // Demuxer now provides frame rate directly; this block is a safety net
+  // for any remaining field-rate edge cases.
   if ((hints.codec == AV_CODEC_ID_VC1 || hints.codec == AV_CODEC_ID_WMV3) &&
       (hints.codecOptions & CODEC_INTERLACED))
   {
