@@ -4003,9 +4003,9 @@ bool CVideoPlayer::OpenVideoStream(CDVDStreamInfo& hint, bool reset)
         m_processInfo->SetVideoInterlaced(hint.interlaced);
 
         float adjustedFps = static_cast<float>(framerate);
-        const bool isSpecialFps = (adjustedFps > 47.5 && adjustedFps < 48.5) ||
-                                  (adjustedFps > 59.5 && adjustedFps < 60.5);
-        while (adjustedFps > 60.0 || (isSpecialFps && adjustedFps / 2.0 >= 20.0))
+        const bool isSpecialFps = (adjustedFps > 47.5f && adjustedFps < 48.5f) ||
+                                  (adjustedFps > 59.5f && adjustedFps < 60.5f);
+        while (adjustedFps > 60.0f || (isSpecialFps && adjustedFps / 2.0f >= 20.0f))
         {
           adjustedFps /= 2.0f;
         }
