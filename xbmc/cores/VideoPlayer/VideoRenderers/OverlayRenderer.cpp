@@ -95,6 +95,7 @@ void CRenderer::Reset()
 {
   m_subtitlePosition = 0;
   m_subtitleDynamicOffset.store(0.0f, std::memory_order_relaxed);
+  m_subtitleViewHeight = 0;
 }
 
 void CRenderer::Release(int idx)
