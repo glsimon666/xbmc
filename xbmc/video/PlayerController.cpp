@@ -337,23 +337,23 @@ bool CPlayerController::OnAction(const CAction &action)
 
       case ACTION_SUBTITLE_VSHIFT_UP:
       {
-        m_subtitleDynamicOffset -= 1.0f;
+        m_subtitleDynamicOffset -= 0.5f;
         if (m_subtitleDynamicOffset < -100.0f)
           m_subtitleDynamicOffset = -100.0f;
         appPlayer->SetDynamicSubtitleOffset(m_subtitleDynamicOffset);
 
-        ShowSlider(action.GetID(), 277, m_subtitleDynamicOffset, -100.0f, 1.0f, 100.0f);
+        ShowSlider(action.GetID(), 277, m_subtitleDynamicOffset, -100.0f, 0.5f, 100.0f);
         return true;
       }
 
       case ACTION_SUBTITLE_VSHIFT_DOWN:
       {
-        m_subtitleDynamicOffset += 1.0f;
+        m_subtitleDynamicOffset += 0.5f;
         if (m_subtitleDynamicOffset > 100.0f)
           m_subtitleDynamicOffset = 100.0f;
         appPlayer->SetDynamicSubtitleOffset(m_subtitleDynamicOffset);
 
-        ShowSlider(action.GetID(), 277, m_subtitleDynamicOffset, -100.0f, 1.0f, 100.0f);
+        ShowSlider(action.GetID(), 277, m_subtitleDynamicOffset, -100.0f, 0.5f, 100.0f);
         return true;
       }
 
@@ -509,7 +509,7 @@ void CPlayerController::OnSliderChange(void *data, CGUISliderControl *slider)
   else if (m_sliderAction == ACTION_SUBTITLE_VSHIFT_UP ||
            m_sliderAction == ACTION_SUBTITLE_VSHIFT_DOWN)
   {
-    std::string strValue = StringUtils::Format("{:.0f} %", slider->GetFloatValue());
+    std::string strValue = StringUtils::Format("{:.1f} %", slider->GetFloatValue());
     slider->SetTextValue(strValue);
   }
   else if (m_sliderAction == ACTION_VOLAMP_UP ||
