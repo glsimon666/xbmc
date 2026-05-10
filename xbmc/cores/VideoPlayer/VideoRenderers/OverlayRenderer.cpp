@@ -278,7 +278,7 @@ bool CRenderer::HasOverlay(int idx)
 
 void CRenderer::SetVideoRect(CRect &source, CRect &dest, CRect &view)
 {
-  if (m_rv != view) // Screen resolution is changed
+  if (m_rv != view)
   {
     m_rv = view;
     OnViewChange();

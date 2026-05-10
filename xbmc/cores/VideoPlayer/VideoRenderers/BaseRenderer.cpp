@@ -234,6 +234,19 @@ void CBaseRenderer::CalcNormalRenderRect(float offsetX,
   }
 
   ReorderDrawPoints();
+
+  const float snapThreshold = 1.0f;
+  const float viewRight = offsetX + width;
+  const float viewBottom = offsetY + height;
+
+  if (std::abs(m_destRect.x1 - offsetX) < snapThreshold)
+    m_destRect.x1 = offsetX;
+  if (std::abs(m_destRect.y1 - offsetY) < snapThreshold)
+    m_destRect.y1 = offsetY;
+  if (std::abs(m_destRect.x2 - viewRight) < snapThreshold)
+    m_destRect.x2 = viewRight;
+  if (std::abs(m_destRect.y2 - viewBottom) < snapThreshold)
+    m_destRect.y2 = viewBottom;
 }
 
 //***************************************************************************************
