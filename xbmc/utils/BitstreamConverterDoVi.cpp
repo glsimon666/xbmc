@@ -7,6 +7,7 @@
  */
 
 #include "BitstreamConverter.h"
+#include "BitstreamIoReader.h"
 #include "BitstreamIoWriter.h"
 #include "Crc32.h"
 
@@ -295,61 +296,48 @@ void AppendCMv40ExtensionBlock(BitstreamIoWriter& writer)
   writer.write_bytes(cached_ext_blocks.data(), cached_ext_blocks.size());
 }
 
-bool PayloadSize(const std::vector<uint8_t>& rbsp, size_t& payloadSize)
+bool GetCMv29PayloadInfo(const DoviVdrDmData* vdrDmData, size_t& dmPayloadEndBit)
 {
-  if (rbsp.size() < 6) return false;
-
-  if (rbsp.back() != 0x80) return false;
-
-  payloadSize = rbsp.size() - 5;
-  if (payloadSize <= 1) return false;
-
+  if (!vdrDmData || vdrDmData->cmv29_payload_end_bit == 0) return false;
+  dmPayloadEndBit = vdrDmData->cmv29_payload_end_bit;
   return true;
 }
 
-// Build a NAL with CMv4.0 extension inserted at a specific offset.
-// trimBits = number of rpu_alignment_zero_bits to strip from the end of the payload
-// before inserting the CMv4.0 extension data.
-bool BuildCMv40Nalu(const std::vector<uint8_t>& rbsp,
-                    size_t payloadSize,
-                    uint8_t nalHeader0,
-                    uint8_t nalHeader1,
-                    int trimBits,
-                    std::vector<uint8_t>& naluOut)
+bool CopyRbspBits(BitstreamIoWriter& writer,
+                  const std::vector<uint8_t>& rbsp,
+                  size_t startBit,
+                  size_t bitCount)
 {
-  const int contentBits = (8 - trimBits);
+  const size_t totalBits = rbsp.size() * 8;
+  if ((startBit > totalBits) || (bitCount > (totalBits - startBit))) return false;
+  BitstreamIoReader reader(rbsp);
+  if (!reader.skip_bits(startBit)) return false;
+  for (size_t i = 0; i < bitCount; ++i)
+  {
+    bool bit = false;
+    if (!reader.read(bit)) return false;
+    writer.write(bit);
+  }
+  return true;
+}
 
-  if ((contentBits <= 0) || (payloadSize < 1)) return false;
+bool BuildCMv40NaluPayload(const std::vector<uint8_t>& rbsp,
+                           size_t dmPayloadEndBit,
+                           std::vector<uint8_t>& naluPayloadOut)
+{
+  if (dmPayloadEndBit == 0) return false;
 
-  BitstreamIoWriter writer(payloadSize + 26); // extension (21) + CRC32 (4) + FINAL_BYTE (1)
+  BitstreamIoWriter writer(rbsp.size() + 26);
 
-  // Copy all complete payload bytes except the last one
-  if (payloadSize > 1)
-    writer.write_bytes(rbsp.data(), payloadSize - 1);
-
-  // Copy only the content bits of the last payload byte (strip alignment zeros)
-  const uint8_t lastByte = rbsp[payloadSize - 1];
-  writer.write_n<uint8_t>(static_cast<uint8_t>(lastByte >> trimBits), contentBits);
-
-  // Append CMv4.0 extension at exact bit position (no alignment gap)
+  if (!CopyRbspBits(writer, rbsp, 0, dmPayloadEndBit)) return false;
   AppendCMv40ExtensionBlock(writer);
-
-  // rpu_alignment_zero_bit: pad to byte boundary
   writer.byte_align();
-
   writer.write_n<uint32_t>(Crc32::Compute(writer.as_slice() + 1, writer.as_slice_size() - 1), 32);
-  writer.write_n<uint8_t>(0x80, 8);  // FINAL_BYTE
+  writer.write_n<uint8_t>(0x80, 8);
 
   std::vector<uint8_t> newRbsp = writer.into_inner();
-
   HevcAddStartCodeEmulationPrevention3Byte(newRbsp);
-
-  naluOut.clear();
-  naluOut.reserve(2 + newRbsp.size());
-  naluOut.push_back(nalHeader0);
-  naluOut.push_back(nalHeader1);
-  naluOut.insert(naluOut.end(), newRbsp.begin(), newRbsp.end());
-
+  naluPayloadOut.swap(newRbsp);
   return true;
 }
 
@@ -372,65 +360,41 @@ DoviRpuOpaque* ParseAndValidateCmv40Nalu(const std::vector<uint8_t>& nalu)
   return nullptr;
 }
 
-// Append CMv4.0 extension to an RPU NAL. On success, populates |out| with the
+// Append CMv4.0 extension to an RPU NAL using libdovi's cmv29_payload_end_bit
+// for the exact CMv2.9 payload boundary. On success, populates |out| with the
 // new NAL and returns the validated DoviRpuOpaque* (caller must free).
 // Returns nullptr on failure.
-//
-// |trim| is a hint for the number of rpu_alignment_zero_bits to strip.
-// Most commonly 1 (L6 is 79 bits → 1 bit padding). Updated on success.
 DoviRpuOpaque* AppendCMv40ToRpuNalu(uint8_t* nalBuf,
                                     int32_t nalSize,
-                                    std::vector<uint8_t>& out,
-                                    uint8_t& trim)
+                                    const DoviVdrDmData* sourceVdrDmData,
+                                    std::vector<uint8_t>& out)
 {
   if (!nalBuf || (nalSize <= 2)) return nullptr;
-
-  const uint8_t nal0 = nalBuf[0];
-  const uint8_t nal1 = nalBuf[1];
 
   std::vector<uint8_t> rbsp;
   HevcClearStartCodeEmulationPrevention3Byte(nalBuf + 2, static_cast<size_t>(nalSize - 2), rbsp);
 
   if (rbsp.size() < 2) return nullptr;
 
-  size_t payloadSize = 0;
-  if (!PayloadSize(rbsp, payloadSize)) return nullptr;
+  size_t dmPayloadEndBit = 0;
+  if (!GetCMv29PayloadInfo(sourceVdrDmData, dmPayloadEndBit))
+    return nullptr;
 
-  // The RPU bitstream has rpu_alignment_zero_bit padding (0-7 bits) between the
-  // CMv2.9 DM data section end and the CRC. We must strip them before
-  // inserting the CMv4.0 extension.
-  //
-  // |trim| hints where to start (most commonly 1 for L6's 79 bits).
-  // If the LSB at trim is a 1-bit (data), the payload is already byte-aligned,
-  // so skip straight to 0 instead of searching upward through all values.
+  std::vector<uint8_t> naluPayload;
+  if (!BuildCMv40NaluPayload(rbsp, dmPayloadEndBit, naluPayload))
+    return nullptr;
+
   std::vector<uint8_t> naluOut;
+  naluOut.reserve(2 + naluPayload.size());
+  naluOut.push_back(nalBuf[0]);
+  naluOut.push_back(nalBuf[1]);
+  naluOut.insert(naluOut.end(), naluPayload.begin(), naluPayload.end());
 
-  if (trim > 0 && (rbsp[payloadSize - 1] & ((1 << trim) - 1))) trim = 0;
+  DoviRpuOpaque* opaque = ParseAndValidateCmv40Nalu(naluOut);
+  if (!opaque) return nullptr;
 
-  for (uint8_t i = 0; i <= 7; ++i)
-  {
-    const uint8_t trimBits = static_cast<uint8_t>((trim + i) % 8);
-
-    naluOut.clear();
-    if (BuildCMv40Nalu(rbsp, payloadSize, nal0, nal1, trimBits, naluOut))
-    {
-      DoviRpuOpaque* opaque = ParseAndValidateCmv40Nalu(naluOut);
-      if (opaque)
-      {
-        if (trim != trimBits)
-        {
-          logM(LOGINFO, "CBitstreamConverterDoVi",
-                        "CMv4 alignment: last_byte=0x{:02X} padding={}",
-                        rbsp[payloadSize - 1], trimBits);
-          trim = trimBits;
-        }
-        out.swap(naluOut);
-        return opaque;
-      }
-    }
-  }
-
-  return nullptr;
+  out.swap(naluOut);
+  return opaque;
 }
 
 inline DOVIELType GetElTypeFromHeader(const DoviRpuDataHeader* header)
@@ -496,8 +460,7 @@ inline void AppendCMv40(DOVICMv40Mode cmv40Mode,
                         uint8_t*& nalBuf,
                         int32_t& nalSize,
                         std::vector<uint8_t>& nalu,
-                        DoviRpuOpaque*& opaque,
-                        uint8_t& trim)
+                        DoviRpuOpaque*& opaque)
 {
   if (!header || !vdrDmData) return;
 
@@ -514,7 +477,7 @@ inline void AppendCMv40(DOVICMv40Mode cmv40Mode,
          ((cmv40Mode == DOVICMv40Mode::CMV40_NO_L2) && IsCMv29NoL2(header, vdrDmData))) &&
         (dv_type == 0))) return;
 
-  opaque = AppendCMv40ToRpuNalu(nalBuf, nalSize, nalu, trim);
+  opaque = AppendCMv40ToRpuNalu(nalBuf, nalSize, vdrDmData, nalu);
   if (opaque)
   {
     nalBuf = nalu.data();
@@ -609,8 +572,7 @@ void CBitstreamConverter::ProcessDoViRpu(
                   nalBuf,
                   nalSize,
                   nalu,
-                  appendOpaque,
-                  m_cmv40_trim);
+                  appendOpaque);
 
     // Use the appendOpaque from the append CMv4.0 if available
     DoviRpuOpaque* metadataOpaque = appendOpaque ? appendOpaque : opaque;
